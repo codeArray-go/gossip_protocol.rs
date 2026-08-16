@@ -8,6 +8,7 @@ use futures::stream::StreamExt;
 use libp2p::{ gossipsub, mdns, noise, swarm::{ NetworkBehaviour, SwarmEvent }, tcp, yamux };
 use tokio::{ io, io::AsyncBufReadExt, select };
 use tracing_subscriber::EnvFilter;
+mod crypto;
 
 // Network behaviour to combines Gossipsub and Mdns.
 #[derive(NetworkBehaviour)]

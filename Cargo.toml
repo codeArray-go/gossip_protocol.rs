@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+ecdsa = { version = "0.17.0", features = ["algorithm", "serde"] }
 futures = "0.3.33"
+k256 = "0.14.0"
 libp2p = { version = "0.56.0", features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic"] }
+serde = { version = "1.0.229", features = ["derive"] }
 tokio = { version = "1.53.1", features = ["full"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
