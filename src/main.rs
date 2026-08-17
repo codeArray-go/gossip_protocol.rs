@@ -5,9 +5,10 @@ use std::{
     time::Duration,
 };
 use futures::stream::StreamExt;
-use libp2p::{ gossipsub, mdns, noise, swarm::{ NetworkBehaviour, SwarmEvent }, tcp, yamux };
+use libp2p::{ gossipsub, identity::{Keypair, secp256k1}, mdns, noise, swarm::{ NetworkBehaviour, SwarmEvent }, tcp, yamux };
 use tokio::{ io, io::AsyncBufReadExt, select };
 use tracing_subscriber::EnvFilter;
+use crate::crypto::PrivateKey;
 mod crypto;
 
 // Network behaviour to combines Gossipsub and Mdns.
@@ -20,9 +21,16 @@ struct MyBehaviour {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let _ = tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).try_init();
+    
+    let private_key = PrivateKey::new();
+    let mut bytes: [u8; 32] = private_key.0.to_bytes().into();
+    let libp2p_secret = secp256k1::SecretKey
+        ::try_from_bytes(&mut bytes)
+        .expect("Failed to parse secp256k1 private key bytes");
+    let private_key = Keypair::from(secp256k1::Keypair::from(libp2p_secret));
 
     let mut swarm = libp2p::SwarmBuilder
-        ::with_new_identity()
+        ::with_existing_identity(private_key)
         .with_tokio()
         .with_tcp(tcp::Config::default(), noise::Config::new, yamux::Config::default)?
         .with_quic()
