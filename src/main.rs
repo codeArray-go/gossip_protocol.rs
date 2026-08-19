@@ -1,15 +1,20 @@
-use std::{
-    collections::hash_map::DefaultHasher,
-    error::Error,
-    hash::{ Hash, Hasher },
-    time::Duration,
-};
+use std::{ error::Error, time::Duration };
 use futures::stream::StreamExt;
-use libp2p::{ gossipsub, identity::{Keypair, secp256k1}, mdns, noise, swarm::{ NetworkBehaviour, SwarmEvent }, tcp, yamux };
+use libp2p::{
+    gossipsub,
+    identity::{ Keypair, secp256k1 },
+    mdns,
+    noise,
+    swarm::{ NetworkBehaviour, SwarmEvent },
+    tcp,
+    yamux,
+};
 use tokio::{ io, io::AsyncBufReadExt, select };
 use tracing_subscriber::EnvFilter;
-use crate::crypto::PrivateKey;
+use crate::{ crypto::PrivateKey, sha256::Hash };
+
 mod crypto;
+mod sha256;
 
 // Network behaviour to combines Gossipsub and Mdns.
 #[derive(NetworkBehaviour)]
@@ -21,7 +26,7 @@ struct MyBehaviour {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let _ = tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).try_init();
-    
+
     let private_key = PrivateKey::new();
     let mut bytes: [u8; 32] = private_key.0.to_bytes().into();
     let libp2p_secret = secp256k1::SecretKey
@@ -36,9 +41,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_quic()
         .with_behaviour(|key| {
             let message_id_fn = |message: &gossipsub::Message| {
-                let mut s = DefaultHasher::new();
-                message.data.hash(&mut s);
-                gossipsub::MessageId::from(s.finish().to_string())
+                let s = Hash::from(&message.data);
+                gossipsub::MessageId::from(s.0.to_string())
             };
 
             // Configuration for gossipsub protocall
@@ -120,3 +124,4 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 }
+
