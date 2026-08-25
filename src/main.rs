@@ -1,127 +1,171 @@
-use std::{ error::Error, time::Duration };
-use futures::stream::StreamExt;
-use libp2p::{
-    gossipsub,
-    identity::{ Keypair, secp256k1 },
-    mdns,
-    noise,
-    swarm::{ NetworkBehaviour, SwarmEvent },
-    tcp,
-    yamux,
+use crate::utils::{Chunk, Hash, U256, send_in_chunks};
+use std::{
+    collections::{HashMap, HashSet},
+    env,
+    // fs::{self, File},
+    // io::Write,
+    net::{SocketAddr, UdpSocket},
+    sync::{Arc, Mutex},
+    thread,
 };
-use tokio::{ io, io::AsyncBufReadExt, select };
-use tracing_subscriber::EnvFilter;
-use crate::{ crypto::PrivateKey, sha256::Hash };
 
-mod crypto;
-mod sha256;
+mod utils;
 
-// Network behaviour to combines Gossipsub and Mdns.
-#[derive(NetworkBehaviour)]
-struct MyBehaviour {
-    gossipsub: gossipsub::Behaviour,
-    mdns: mdns::tokio::Behaviour,
+struct NodeState {
+    peer: Vec<SocketAddr>,
+    msg_seen: HashSet<String>,
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let _ = tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).try_init();
+struct MessageState {
+    total_chunk: u16,
+    recv_id: Option<U256>,
+}
 
-    let private_key = PrivateKey::new();
-    let mut bytes: [u8; 32] = private_key.0.to_bytes().into();
-    let libp2p_secret = secp256k1::SecretKey
-        ::try_from_bytes(&mut bytes)
-        .expect("Failed to parse secp256k1 private key bytes");
-    let private_key = Keypair::from(secp256k1::Keypair::from(libp2p_secret));
+#[derive(Default)]
+struct ChunkVec {
+    recv_msg_vec: HashMap<U256, Vec<Vec<u8>>>,
+}
 
-    let mut swarm = libp2p::SwarmBuilder
-        ::with_existing_identity(private_key)
-        .with_tokio()
-        .with_tcp(tcp::Config::default(), noise::Config::new, yamux::Config::default)?
-        .with_quic()
-        .with_behaviour(|key| {
-            let message_id_fn = |message: &gossipsub::Message| {
-                let s = Hash::from(&message.data);
-                gossipsub::MessageId::from(s.0.to_string())
+fn main() {
+    // -------------------------------------------------------------------------
+    // TEST UTILITY: 10MB Payload Generator
+    // Uncomment the commented code below to generate a dummy text file for chunk testing.
+    // -------------------------------------------------------------------------
+    // let mut file = File::create("text.txt").expect("Failed to create file.");
+    //
+    // for i in 1..=200_00 {
+    //     let line = format!(
+    //         "Message block {} - Testing UDP chunking logic in Rust. Repeating to reach 10MB payload size...\n",
+    //         i
+    //     );
+    //     file.write_all(line.as_bytes()).unwrap();
+    // }
+    // println!("File gerated.");
+
+    let state = Arc::new(Mutex::new(NodeState {
+        peer: Vec::new(),
+        msg_seen: HashSet::new(),
+    }));
+
+    // --- Local Discovery Setup (Temporary) ---
+    // TODO: Remove this block once the Relay server is implemented.
+    let arg: Vec<String> = env::args().skip(1).collect();
+
+    let socket = UdpSocket::bind(&arg[0]).expect("Give a correct port.");
+    let socket_clone = socket.try_clone().expect("Error while cloning.");
+
+    if arg.len() > 1 {
+        let mut node = state.lock().unwrap();
+        let addrs = &arg[1];
+        if let Ok(peers) = addrs.parse::<SocketAddr>() {
+            node.peer.push(peers);
+            println!("Peer connected: {peers}");
+        } else {
+            println!("Wrong address provided.");
+        }
+    }
+    // -----------------------------------------
+
+    let chunk_vec = Arc::new(Mutex::new(ChunkVec {
+        recv_msg_vec: HashMap::new(),
+    }));
+    let chunk_vec_clone = Arc::clone(&chunk_vec);
+
+    let msg_state = Arc::new(Mutex::new(MessageState {
+        total_chunk: 0,
+        recv_id: None,
+    }));
+    let msg_state_clone = Arc::clone(&msg_state);
+
+    let state_clone = Arc::clone(&state);
+
+    // LISTNER
+    thread::spawn(move || {
+        let mut buff = [0u8; 65_535];
+
+        loop {
+            if let Ok((amt, src)) = socket_clone.recv_from(&mut buff) {
+                let actual_byte = &buff[..amt];
+
+                let mut node = state_clone.lock().unwrap();
+                if !node.peer.contains(&src) {
+                    println!("New address connected: {:?}", src);
+                    node.peer.push(src);
+                }
+
+                if let Ok(msg) = Chunk::from_byte(actual_byte) {
+                    let total_chunks = msg.total_chunks as u16;
+                    let index = msg.index as u16;
+
+                    let mut msg_state = msg_state_clone.lock().unwrap();
+                    if msg_state.total_chunk == 0 {
+                        msg_state.total_chunk = total_chunks;
+                        msg_state.recv_id = Some(msg.id.clone());
+                    }
+
+                    let mut chunk_vec = chunk_vec_clone.lock().unwrap();
+                    if msg_state.recv_id.unwrap() == msg.id {
+                        if index < msg_state.total_chunk && msg.id == msg_state.recv_id.unwrap() {
+                            chunk_vec
+                                .recv_msg_vec
+                                .entry(msg.id.clone())
+                                .or_default()
+                                .push(msg.msg.to_vec());
+                        }
+                    }
+
+                    if index == (msg_state.total_chunk - 1) {
+                        if let Some(chunks) = chunk_vec.recv_msg_vec.get(&msg.id) {
+                            // CHECKING IF CHUNK IS MISSING
+                            if (chunks.len() as u16) < msg_state.total_chunk {
+                                println!("packets are missing");
+                                // TODO: add logic if some chunk is missing then ask for specific index chunk
+                            }
+                            let combined_byte: Vec<u8> = chunks.concat();
+
+                            match String::from_utf8(combined_byte) {
+                                Ok(message) => {
+                                    node.msg_seen.insert(format!("{:?}", msg.id));
+                                    println!("[{:?}]:- msg: {:?}", src, message);
+                                }
+                                Err(e) => {
+                                    println!("Error: Bytes are not valid UTF-8 text: {}", e);
+                                    chunk_vec.recv_msg_vec.remove(&msg.id);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    println!("Type your message and press enter to send. ");
+
+    let stdin = std::io::stdin();
+    let mut input = String::new();
+    let clone_state = Arc::clone(&state);
+
+    // MESSAGE SENDER
+    loop {
+        input.clear();
+        stdin.read_line(&mut input).unwrap();
+        let text = input.trim().to_string();
+
+        // -- PASSING FILE --
+        // -- TODO: To pass file uncomment code and replace above 'text' variable name with 'path'
+        // let text = fs::read_to_string(path).expect("Faild to read file");
+
+        if !text.is_empty() {
+            let msg_id = Hash::of(&text);
+
+            let peers: Vec<SocketAddr> = {
+                let mut node = clone_state.lock().unwrap();
+                node.msg_seen.insert(format!("{:?}", msg_id));
+                node.peer.clone()
             };
 
-            // Configuration for gossipsub protocall
-            let gossipsub_config = gossipsub::ConfigBuilder
-                ::default()
-                .heartbeat_interval(Duration::from_secs(10))
-                .validation_mode(gossipsub::ValidationMode::Strict)
-                .message_id_fn(message_id_fn)
-                .build()
-                .map_err(io::Error::other)?;
-
-            // Gossip network behavious
-            let gossip_sub = gossipsub::Behaviour::new(
-                gossipsub::MessageAuthenticity::Signed(key.clone()),
-                gossipsub_config
-            )?;
-
-            // Initialize mDNS (Multicast DNS) behaviour
-            let mdn_s = mdns::tokio::Behaviour::new(
-                mdns::Config::default(),
-                key.public().to_peer_id()
-            )?;
-
-            Ok(MyBehaviour { gossipsub: gossip_sub, mdns: mdn_s })
-        })?
-        .build();
-
-    // Gossipsub topic: Nodes will only receive messages if they subscribe to the same topic name.
-    let topic = gossipsub::IdentTopic::new("test-net");
-
-    // subscribes to our topic
-    swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
-
-    // Wraps standard input in a buffer, making it more efficient to read data.
-    let mut stdin = io::BufReader::new(io::stdin()).lines();
-
-    // Listen on all interfaces and whatever port the OS assigns
-    swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
-    swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
-
-    println!("Enter messages via STDIN and they will be sent to connected peers using Gossipsub");
-
-    // Kick it off
-    loop {
-        select! {
-             Ok(Some(line)) = stdin.next_line() => {
-                if let Err(e) = swarm
-                    .behaviour_mut().gossipsub
-                    .publish(topic.clone(), line.as_bytes()) {
-                    println!("Publish error: {e:?}");
-                }
-            }
-            event = swarm.select_next_some() => match event {
-                SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
-                    for (peer_id, _multiaddr) in list {
-                        println!("mDNS discovered a new peer: {peer_id}");
-                        swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
-                    }
-                },
-                SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
-                    for (peer_id, _multiaddr) in list {
-                        println!("mDNS discover peer has expired: {peer_id}");
-                        swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
-                    }
-                },
-                SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(gossipsub::Event::Message {
-                    propagation_source: peer_id,
-                    message_id: id,
-                    message,
-                })) => println!(
-                        "Got message: '{}' with id: {id} from peer: {peer_id}",
-                        String::from_utf8_lossy(&message.data),
-                    ),
-                SwarmEvent::NewListenAddr { address, .. } => {
-                    println!("Local node is listening on {address}");
-                }
-                _ => {}
-            }
+            send_in_chunks(&text, msg_id, peers, &socket);
         }
     }
 }
-

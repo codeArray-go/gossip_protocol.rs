@@ -1,17 +1,14 @@
 [package]
-name = "p2p"
+name = "scratch_p2p"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 ciborium = "0.2.2"
 ecdsa = { version = "0.17.0", features = ["algorithm", "serde"] }
-futures = "0.3.33"
 hex = "0.4.3"
 k256 = "0.14.0"
-libp2p = { version = "0.56.0", features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "secp256k1"] }
 serde = { version = "1.0.229", features = ["derive"] }
 sha256 = "1.6.0"
-tokio = { version = "1.53.1", features = ["full"] }
-tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tokio = "1.53.1"
 uint = "0.10.1"
