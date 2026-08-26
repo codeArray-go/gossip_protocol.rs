@@ -1,6 +1,6 @@
 use crate::utils::{Chunk, Hash, U256, send_in_chunks};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     env,
     // fs::{self, File},
     // io::Write,
@@ -17,13 +17,14 @@ struct NodeState {
 }
 
 struct MessageState {
+    index: u16,
     total_chunk: u16,
     recv_id: Option<U256>,
 }
 
 #[derive(Default)]
 struct ChunkVec {
-    recv_msg_vec: HashMap<U256, Vec<Vec<u8>>>,
+    recv_msg_vec: HashMap<U256, BTreeMap<u16, Vec<u8>>>,
 }
 
 fn main() {
@@ -72,6 +73,7 @@ fn main() {
     let chunk_vec_clone = Arc::clone(&chunk_vec);
 
     let msg_state = Arc::new(Mutex::new(MessageState {
+        index: 0,
         total_chunk: 0,
         recv_id: None,
     }));
@@ -95,43 +97,58 @@ fn main() {
 
                 if let Ok(msg) = Chunk::from_byte(actual_byte) {
                     let total_chunks = msg.total_chunks as u16;
-                    let index = msg.index as u16;
+                    let curr_idx = msg.index as u16;
 
                     let mut msg_state = msg_state_clone.lock().unwrap();
-                    if msg_state.total_chunk == 0 {
+                    if msg_state.total_chunk == 0 || msg_state.total_chunk < total_chunks {
+                        msg_state.total_chunk = msg.index;
                         msg_state.total_chunk = total_chunks;
                         msg_state.recv_id = Some(msg.id.clone());
                     }
 
                     let mut chunk_vec = chunk_vec_clone.lock().unwrap();
-                    if msg_state.recv_id.unwrap() == msg.id {
-                        if index < msg_state.total_chunk && msg.id == msg_state.recv_id.unwrap() {
-                            chunk_vec
-                                .recv_msg_vec
-                                .entry(msg.id.clone())
-                                .or_default()
-                                .push(msg.msg.to_vec());
-                        }
+                    if !(curr_idx < msg_state.total_chunk)
+                        && !(msg.id == msg_state.recv_id.unwrap())
+                    {
+                        println!("Wrong chunk for wrong id recieved.");
+                        // TODO:- handle error.
+                        return;
+                    }
+                    chunk_vec
+                        .recv_msg_vec
+                        .entry(msg.id.clone())
+                        .or_default()
+                        .insert(curr_idx, msg.msg.to_vec());
+
+                    let diff: u16 = curr_idx - msg_state.index;
+                    if !matches!(diff, 0..=1) {
+                        let mut buff = Vec::with_capacity(4);
+                        // STARTING INDEX
+                        buff.extend_from_slice(&(msg_state.index + 1).to_le_bytes());
+
+                        // ENDING INDEX
+                        buff.extend_from_slice(&(curr_idx - 1).to_le_bytes());
+
+                        socket_clone
+                            .send_to(&buff, src)
+                            .expect("Failed to askk for missing chunk");
                     }
 
-                    if index == (msg_state.total_chunk - 1) {
-                        if let Some(chunks) = chunk_vec.recv_msg_vec.get(&msg.id) {
-                            // CHECKING IF CHUNK IS MISSING
-                            if (chunks.len() as u16) < msg_state.total_chunk {
-                                println!("packets are missing");
-                                // TODO: add logic if some chunk is missing then ask for specific index chunk
+                    // correct if else logics
+                    if let Some(chunks) = chunk_vec.recv_msg_vec.get(&msg.id) {
+                        let combined_byte: Vec<u8> = chunks.values().flatten().copied().collect();
+                        if (combined_byte.len() as u16) != msg_state.total_chunk {
+                            println!("All chunks are not recieved yet");
+                            return;
+                        }
+                        match String::from_utf8(combined_byte) {
+                            Ok(message) => {
+                                node.msg_seen.insert(format!("{:?}", msg.id));
+                                println!("[{:?}]:- msg: {:?}", src, message);
                             }
-                            let combined_byte: Vec<u8> = chunks.concat();
-
-                            match String::from_utf8(combined_byte) {
-                                Ok(message) => {
-                                    node.msg_seen.insert(format!("{:?}", msg.id));
-                                    println!("[{:?}]:- msg: {:?}", src, message);
-                                }
-                                Err(e) => {
-                                    println!("Error: Bytes are not valid UTF-8 text: {}", e);
-                                    chunk_vec.recv_msg_vec.remove(&msg.id);
-                                }
+                            Err(e) => {
+                                println!("Error: Bytes are not valid UTF-8 text: {}", e);
+                                chunk_vec.recv_msg_vec.remove(&msg.id);
                             }
                         }
                     }
