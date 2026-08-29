@@ -96,35 +96,45 @@ fn main() {
                 }
 
                 if let Ok(msg) = Chunk::from_byte(actual_byte) {
-                    let total_chunks = msg.total_chunks as u16;
+                    let crr_total_chunks = msg.total_chunks as u16;
                     let curr_idx = msg.index as u16;
 
-                    let mut msg_state = msg_state_clone.lock().unwrap();
-                    if msg_state.total_chunk == 0 || msg_state.total_chunk < total_chunks {
-                        msg_state.total_chunk = msg.index;
-                        msg_state.total_chunk = total_chunks;
-                        msg_state.recv_id = Some(msg.id.clone());
-                    }
+                    // Inserting value to MessageState and Cloning them for further use
+                    let (stored_total, stored_idx, stored_recv_id) = {
+                        let mut msg_state = msg_state_clone.lock().unwrap();
 
-                    let mut chunk_vec = chunk_vec_clone.lock().unwrap();
-                    if !(curr_idx < msg_state.total_chunk)
-                        && !(msg.id == msg_state.recv_id.unwrap())
-                    {
-                        println!("Wrong chunk for wrong id recieved.");
-                        // TODO:- handle error.
+                        if msg_state.total_chunk == 0 || msg_state.total_chunk < crr_total_chunks {
+                            msg_state.index = msg.index;
+                            msg_state.total_chunk = crr_total_chunks;
+                            msg_state.recv_id = Some(msg.id.clone());
+                        }
+                        (
+                            msg_state.total_chunk,
+                            msg_state.index,
+                            msg_state.recv_id.clone(),
+                        )
+                    };
+
+                    if !(curr_idx < stored_total) && !(msg.id == stored_recv_id.unwrap()) {
+                        println!("Wrong chunk for wrong message id recieved.");
                         return;
                     }
+
+                    // Storing chunk vec to ChunkVec
+                    let mut chunk_vec = chunk_vec_clone.lock().unwrap();
                     chunk_vec
                         .recv_msg_vec
                         .entry(msg.id.clone())
                         .or_default()
                         .insert(curr_idx, msg.msg.to_vec());
 
-                    let diff: u16 = curr_idx - msg_state.index;
+                    // Requesting for missing chunks
+                    // TODO:- make it ideal for real condition
+                    let diff: u16 = curr_idx - stored_idx;
                     if !matches!(diff, 0..=1) {
                         let mut buff = Vec::with_capacity(4);
                         // STARTING INDEX
-                        buff.extend_from_slice(&(msg_state.index + 1).to_le_bytes());
+                        buff.extend_from_slice(&(stored_idx + 1).to_le_bytes());
 
                         // ENDING INDEX
                         buff.extend_from_slice(&(curr_idx - 1).to_le_bytes());
@@ -134,13 +144,11 @@ fn main() {
                             .expect("Failed to askk for missing chunk");
                     }
 
-                    // correct if else logics
-                    if let Some(chunks) = chunk_vec.recv_msg_vec.get(&msg.id) {
+                    // Converting to real message
+                    if let Some(chunks) = chunk_vec.recv_msg_vec.get(&msg.id)
+                        && (chunks.len() as u16) != stored_total
+                    {
                         let combined_byte: Vec<u8> = chunks.values().flatten().copied().collect();
-                        if (combined_byte.len() as u16) != msg_state.total_chunk {
-                            println!("All chunks are not recieved yet");
-                            return;
-                        }
                         match String::from_utf8(combined_byte) {
                             Ok(message) => {
                                 node.msg_seen.insert(format!("{:?}", msg.id));
@@ -151,6 +159,9 @@ fn main() {
                                 chunk_vec.recv_msg_vec.remove(&msg.id);
                             }
                         }
+                    } else {
+                        println!("Total chunks:");
+                        return;
                     }
                 }
             }
