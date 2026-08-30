@@ -119,7 +119,7 @@ pub fn send_in_chunks(msg: &str, msg_id: Hash, peers: Vec<SocketAddr>, socket: &
         let msg_bytes = chunk.to_byte();
 
         for peer in &peers {
-            let _ = socket.send_to(&msg_bytes, peer);
+            socket.send_to(&msg_bytes, peer).expect("Failed to send");
         }
     }
 }

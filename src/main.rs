@@ -1,9 +1,9 @@
+use net2::UdpSocketExt;
+
 use crate::utils::{Chunk, Hash, U256, send_in_chunks};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env,
-    // fs::{self, File},
-    // io::Write,
     net::{SocketAddr, UdpSocket},
     sync::{Arc, Mutex},
     thread,
@@ -53,6 +53,10 @@ fn main() {
     let arg: Vec<String> = env::args().skip(1).collect();
 
     let socket = UdpSocket::bind(&arg[0]).expect("Give a correct port.");
+    // Increased buffer size at OS level till 2mb
+    socket
+        .set_send_buffer_size(1024 * 1024 * 2)
+        .expect("Failed to set buffer size");
     let socket_clone = socket.try_clone().expect("Error while cloning.");
 
     if arg.len() > 1 {
@@ -193,7 +197,8 @@ fn main() {
                 node.peer.clone()
             };
 
-            send_in_chunks(&text, msg_id, peers, &socket);
+            let send_to_peers: Vec<SocketAddr> = peers.into_iter().take(10).collect();
+            send_in_chunks(&text, msg_id, send_to_peers, &socket);
         }
     }
 }
