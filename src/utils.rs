@@ -2,6 +2,8 @@ use sha256::digest;
 use std::net::{SocketAddr, UdpSocket};
 use uint::construct_uint;
 
+use crate::ChunkSended;
+
 construct_uint!(
     pub struct U256(4);
 );
@@ -101,25 +103,52 @@ impl<'a> Chunk<'a> {
 }
 
 // CREATE CHUNK AND THEN SEND TO ALL PEERS
-pub fn send_in_chunks(msg: &str, msg_id: Hash, peers: Vec<SocketAddr>, socket: &UdpSocket) {
-    let msg_byte = msg.as_bytes();
-    const MAX_SAFE_PAYLOAD: usize = 1400;
+impl ChunkSended {
+    pub fn send_in_chunks(
+        &mut self,
+        msg: &str,
+        msg_id: Hash,
+        peers: Vec<SocketAddr>,
+        socket: &UdpSocket,
+    ) {
+        let msg_byte = msg.as_bytes();
+        const MAX_SAFE_PAYLOAD: usize = 1400;
 
-    let chunks = msg_byte.chunks(MAX_SAFE_PAYLOAD);
-    let total_chunk = chunks.len() as u16;
+        let all_packet: Vec<(usize, &[u8])> =
+            msg_byte.chunks(MAX_SAFE_PAYLOAD).enumerate().collect();
 
-    for (index, chunk_slice) in chunks.enumerate() {
-        let chunk = Chunk {
-            id: msg_id.0.clone(),
-            msg: chunk_slice,
-            index: index as u16,
-            total_chunks: total_chunk,
-        };
+        let total_chunk = all_packet.len() as u16;
 
-        let msg_bytes = chunk.to_byte();
+        for chunk_batch in all_packet.chunks(25) {
+            // Ready to send batch with ecrypton
+            let mut batch = Vec::with_capacity(chunk_batch.len());
 
-        for peer in &peers {
-            socket.send_to(&msg_bytes, peer).expect("Failed to send");
+            for (index, chunk_slice) in chunk_batch {
+                let chunk = Chunk {
+                    id: msg_id.0.clone(),
+                    msg: chunk_slice,
+                    index: *index as u16,
+                    total_chunks: total_chunk,
+                };
+
+                // TODO: after converting to bytes encrypt it
+                let chunk_byte = chunk.to_byte();
+
+                self.0
+                    .entry(msg_id.0.clone())
+                    .or_default()
+                    .insert(*index as u16, chunk_byte.clone());
+
+                batch.push(chunk_byte);
+            }
+
+            for packet in batch {
+                for peer_list in peers.chunks(5) {
+                    for peer in peer_list {
+                        socket.send_to(&packet, peer).expect("Failed to send");
+                    }
+                }
+            }
         }
     }
 }
