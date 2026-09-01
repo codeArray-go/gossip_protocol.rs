@@ -134,7 +134,8 @@ fn main() {
                         .or_default()
                         .insert(curr_idx, msg.msg.to_vec());
 
-                    // TODO: Requesting for missing chunks
+                    // TODO: 1.Requesting for missing chunks
+                    //  2. Complete code of acknowledgment
 
                     // Converting to real message
                     if let Some(chunks) = chunk_vec.recv_msg_vec.get(&msg.id)
