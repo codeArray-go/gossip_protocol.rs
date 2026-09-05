@@ -1,0 +1,12 @@
+[package]
+name = "p2p_lib"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+sha256 = "1.6.0"
+uint = "0.10.1"
+ecdsa = { version = "0.17.0", features = ["algorithm", "serde"] }
+ciborium = "0.2.2"
+hex = "0.4.3"
