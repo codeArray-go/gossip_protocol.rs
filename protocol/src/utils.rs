@@ -25,54 +25,6 @@ impl<'a> Serializer for Chunk<'a> {
     }
 }
 
-//         // 1. Min header size: 32 (Hash) + 4 (msg_len) + 2 (index) + 2 (total_chunks) = 40 bytes
-//         const MIN_HEADER_SIZE: usize = 40;
-//         if buffer.len() < MIN_HEADER_SIZE {
-//             return Err("Buffer is too small for a valid message chunk");
-//         }
-//
-//         // 2. Message ID / Hash
-//         let mut id_byte = [0u8; 32];
-//         id_byte.copy_from_slice(&buffer[0..32]);
-//         let id = U256::from_little_endian(&id_byte);
-//
-//         // 3. Message Payload Length
-//         let mut msg_len_byte = [0u8; 4];
-//         msg_len_byte.copy_from_slice(&buffer[32..36]);
-//         let msg_len = u32::from_le_bytes(msg_len_byte) as usize;
-//
-//         if buffer.len() < 36 + msg_len + 4 {
-//             return Err("Buffer payload is truncated or corrupted");
-//         }
-//
-//         // 5. Payload
-//         let msg = &buffer[36..36 + msg_len];
-//
-//         // 6. Chunk Index (2 bytes after the payload)
-//         let index_offset = 36 + msg_len;
-//         let mut index_byte = [0u8; 2];
-//         index_byte.copy_from_slice(&buffer[index_offset..index_offset + 2]);
-//         let index = u16::from_le_bytes(index_byte);
-//
-//         // 7. Total Chunks count (2 bytes after the index)
-//         let total_offset = index_offset + 2;
-//         let mut total_byte = [0u8; 2];
-//         total_byte.copy_from_slice(&buffer[total_offset..total_offset + 2]);
-//         let total_chunks = u16::from_le_bytes(total_byte);
-//
-//         if total_chunks == 0 || index >= total_chunks {
-//             return Err("Invalid chunk index or total count");
-//         }
-//
-//         Ok(Chunk {
-//             id,
-//             msg,
-//             index,
-//             total_chunks,
-//         })
-//     }
-// }
-
 // CREATE CHUNK AND THEN SEND TO ALL PEERS
 impl ChunkSended {
     pub fn send_in_chunks(
