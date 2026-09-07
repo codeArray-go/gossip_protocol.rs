@@ -1,2 +1,8 @@
-pub mod hash;
+use uint::construct_uint;
+
 pub mod byte_converter;
+pub mod hash;
+
+construct_uint!(
+    pub struct U256(4);
+);

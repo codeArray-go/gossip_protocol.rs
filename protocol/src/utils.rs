@@ -1,12 +1,10 @@
 use crate::ChunkSended;
 use p2p_lib::{
+    U256,
     byte_converter::{Deserializer, Serializer},
-    hash::{Hash, U256},
+    hash::Hash,
 };
-use std::{
-    io::Result,
-    net::{SocketAddr, UdpSocket},
-};
+use std::net::{SocketAddr, UdpSocket};
 
 pub struct Chunk<'a> {
     pub id: U256,
@@ -22,6 +20,40 @@ impl<'a> Serializer for Chunk<'a> {
         self.msg.serialize(buffer);
         self.index.serialize(buffer);
         self.total_chunks.serialize(buffer);
+    }
+}
+
+impl<'a> Deserializer<'a> for Chunk<'a> {
+    fn deserialze(buffer: &mut &'a [u8]) -> std::prelude::v1::Result<Self, &'static str> {
+        // 1. Min header size: 32 (Hash) + 4 (msg_len) + 2 (index) + 2 (total_chunks) = 40 bytes
+        const MIN_HEADER_SIZE: usize = 40;
+        if buffer.len() < MIN_HEADER_SIZE {
+            return Err("Buffer is too small for a valid message chunk");
+        }
+
+        // 2. Message ID / Hash
+        let id = U256::deserialze(buffer)?;
+
+        // 3. Chunk Index (2 bytes after the payload)
+        let index = u16::deserialze(buffer)?;
+
+        // 4. Message Payload Length a u32 value
+        let msg_len = u32::deserialze(buffer)? as usize;
+        println!("{msg_len}");
+
+        // 5. Message Payload
+        let (msg, rest) = buffer.split_at(msg_len);
+        *buffer = rest;
+
+        // 6. Total Chunks count (2 bytes after the index)
+        let total_chunks = u16::deserialze(buffer)?;
+
+        Ok(Chunk {
+            id,
+            msg,
+            index,
+            total_chunks,
+        })
     }
 }
 

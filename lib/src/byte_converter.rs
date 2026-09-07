@@ -1,4 +1,4 @@
-use crate::hash::U256;
+use crate::U256;
 
 // SERIALIZER
 pub trait Serializer {
@@ -30,6 +30,7 @@ impl Serializer for String {
 impl Serializer for &[u8] {
     fn serialize(&self, buffer: &mut Vec<u8>) {
         let len = self.len() as u32;
+        println!("This is msg length from sender side during serialization process: {len}");
         len.serialize(buffer);
         buffer.extend_from_slice(self);
     }
@@ -41,12 +42,11 @@ impl Serializer for U256 {
 }
 
 // DESERIALIZER
-pub trait Deserializer<'de>: Sized {
-    fn deserialze(buffer: &mut &'de [u8]) -> Result<Self, &'static str>;
+pub trait Deserializer<'a>: Sized {
+    fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str>;
 }
-
-impl<'de> Deserializer<'de> for u16 {
-    fn deserialze(buffer: &mut &'de [u8]) -> Result<Self, &'static str> {
+impl<'a> Deserializer<'a> for u16 {
+    fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
         if buffer.len() < 2 {
             return Err("Too small for u16 value");
         }
@@ -56,9 +56,8 @@ impl<'de> Deserializer<'de> for u16 {
         Ok(u16::from_le_bytes(bytes.try_into().unwrap()))
     }
 }
-
-impl<'de> Deserializer<'de> for u32 {
-    fn deserialze(buffer: &mut &'de [u8]) -> Result<Self, &'static str> {
+impl<'a> Deserializer<'a> for u32 {
+    fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
         if buffer.len() < 4 {
             return Err("Too small for u32 value");
         }
@@ -68,9 +67,8 @@ impl<'de> Deserializer<'de> for u32 {
         Ok(u32::from_le_bytes(bytes.try_into().unwrap()))
     }
 }
-
-impl<'de> Deserializer<'de> for String {
-    fn deserialze(buffer: &mut &'de [u8]) -> Result<Self, &'static str> {
+impl<'a> Deserializer<'a> for String {
+    fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
         let len = u32::deserialze(buffer)? as usize;
         if buffer.len() < len {
             return Err("Too small for a String value");
@@ -79,8 +77,19 @@ impl<'de> Deserializer<'de> for String {
         let (bytes, rest) = buffer.split_at(len);
         *buffer = rest;
 
-        let string_slice = std::str::from_utf8(bytes).map_err(|_| "Invalid UTF-8 squence")?;
+        let string_slice = std::str::from_utf8(bytes).map_err(|_| "Invalid UTF-8 sequence")?;
 
         Ok(string_slice.to_string())
+    }
+}
+impl<'a> Deserializer<'a> for U256 {
+    fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
+        if buffer.len() < 32 {
+            return Err("Too small for a U256 value");
+        }
+
+        let (bytes, rest) = buffer.split_at(32);
+        *buffer = rest;
+        Ok(U256::from_little_endian(bytes))
     }
 }

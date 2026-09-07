@@ -1,9 +1,6 @@
+use crate::U256;
 use sha256::digest;
-use uint::construct_uint;
 
-construct_uint!(
-    pub struct U256(4);
-);
 
 #[derive(Debug, Clone)]
 pub struct Hash(pub U256);

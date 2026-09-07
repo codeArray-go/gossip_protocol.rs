@@ -1,9 +1,5 @@
-use crate::utils::{Chunk, from_byte};
 use net2::UdpSocketExt;
-use p2p_lib::{
-    byte_converter::Deserializer,
-    hash::{Hash, U256},
-};
+use p2p_lib::{U256, byte_converter::Deserializer, hash::Hash};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env,
@@ -11,6 +7,8 @@ use std::{
     sync::{Arc, Mutex},
     thread,
 };
+
+use crate::utils::Chunk;
 
 mod utils;
 
@@ -97,7 +95,7 @@ fn main() {
 
         loop {
             if let Ok((amt, src)) = socket_clone.recv_from(&mut buff) {
-                let actual_byte = &buff[..amt];
+                let mut actual_byte = &buff[..amt];
 
                 let mut node = state_clone.lock().unwrap();
                 if !node.peer.contains(&src) {
@@ -105,7 +103,7 @@ fn main() {
                     node.peer.push(src);
                 }
 
-                if let Ok(msg) = Chunk::from_byte(actual_byte) {
+                if let Ok(msg) = Chunk::deserialze(&mut actual_byte) {
                     let crr_total_chunks = msg.total_chunks as u16;
                     let curr_idx = msg.index as u16;
 
