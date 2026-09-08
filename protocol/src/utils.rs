@@ -18,7 +18,6 @@ impl<'a> Serializer for Chunk<'a> {
         self.id.serialize(buffer);
         self.index.serialize(buffer);
         self.msg.serialize(buffer);
-        self.index.serialize(buffer);
         self.total_chunks.serialize(buffer);
     }
 }
@@ -39,7 +38,6 @@ impl<'a> Deserializer<'a> for Chunk<'a> {
 
         // 4. Message Payload Length a u32 value
         let msg_len = u32::deserialze(buffer)? as usize;
-        println!("{msg_len}");
 
         // 5. Message Payload
         let (msg, rest) = buffer.split_at(msg_len);

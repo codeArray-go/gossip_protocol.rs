@@ -30,7 +30,6 @@ impl Serializer for String {
 impl Serializer for &[u8] {
     fn serialize(&self, buffer: &mut Vec<u8>) {
         let len = self.len() as u32;
-        println!("This is msg length from sender side during serialization process: {len}");
         len.serialize(buffer);
         buffer.extend_from_slice(self);
     }

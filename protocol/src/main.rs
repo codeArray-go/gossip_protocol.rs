@@ -1,3 +1,4 @@
+use crate::utils::Chunk;
 use net2::UdpSocketExt;
 use p2p_lib::{U256, byte_converter::Deserializer, hash::Hash};
 use std::{
@@ -7,8 +8,6 @@ use std::{
     sync::{Arc, Mutex},
     thread,
 };
-
-use crate::utils::Chunk;
 
 mod utils;
 
@@ -155,7 +154,6 @@ fn main() {
                             }
                         }
                     } else {
-                        // TODO: handle error correctly here
                         println!("Error in converting chunk to message");
                         return;
                     }
