@@ -5,6 +5,8 @@ use std::{
     thread,
 };
 
+use p2p_lib::byte_converter::Serializer;
+
 struct NodeList(HashMap<SocketAddr, Vec<u8>>);
 
 fn main() {
@@ -28,8 +30,12 @@ fn main() {
                 }
 
                 node_list.0.insert(src.clone(), actual_bytes.to_vec());
+                let copy_list = node_list.0.clone();
 
-                if node_list.0.len() > 1 {
+                let mut buff: Vec<u8> = Vec::new();
+                let list_byte = Serializer::serialize(&copy_list, &mut buff);
+
+                if copy_list.len() > 1 {
                     // TODO: replace actual_bytes with real data to send
                     socket_clone
                         .send_to(actual_bytes, src)

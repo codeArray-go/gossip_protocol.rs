@@ -1,5 +1,9 @@
 use crate::U256;
-use std::{collections::HashMap, hash::Hash};
+use std::{
+    collections::HashMap,
+    hash::Hash,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+};
 
 // SERIALIZER
 pub trait Serializer {
@@ -46,6 +50,34 @@ impl Serializer for U256 {
     }
 }
 
+impl Serializer for SocketAddr {
+    fn serialize(&self, buffer: &mut Vec<u8>) {
+        match self.ip() {
+            IpAddr::V4(ipv4) => {
+                // 0 to indicate IPV4
+                0u8.serialize(buffer);
+                buffer.extend_from_slice(&ipv4.octets());
+            }
+            IpAddr::V6(ipv6) => {
+                // 1 for IPV6
+                1u8.serialize(buffer);
+                buffer.extend_from_slice(&ipv6.octets());
+            }
+        }
+
+        // serialize port
+        self.port().serialize(buffer);
+    }
+}
+
+impl Serializer for Vec<u8> {
+    fn serialize(&self, buffer: &mut Vec<u8>) {
+        let len = self.len() as u32;
+        len.serialize(buffer);
+        buffer.extend_from_slice(self);
+    }
+}
+
 impl<K, V> Serializer for HashMap<K, V>
 where
     K: Serializer,
@@ -65,6 +97,21 @@ where
 // DESERIALIZER
 pub trait Deserializer<'a>: Sized {
     fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str>;
+}
+
+impl<'a> Deserializer<'a> for &'a [u8] {
+    fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
+        let len = u32::deserialze(buffer)? as usize;
+
+        if buffer.len() < len {
+            return Err("Buffer is too short");
+        }
+
+        let (bytes, rest) = buffer.split_at(len);
+        *buffer = rest;
+
+        Ok(bytes)
+    }
 }
 
 impl<'a> Deserializer<'a> for u16 {
@@ -137,5 +184,63 @@ where
         }
 
         Ok(map)
+    }
+}
+
+impl<'a> Deserializer<'a> for SocketAddr {
+    fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
+        if buffer.is_empty() {
+            return Err("Buffer is too small to be a IP address.");
+        }
+
+        let flag = buffer[0];
+
+        *buffer = &buffer[1..];
+
+        let ip = match flag {
+            0 => {
+                if buffer.len() < 4 {
+                    println!("Not full filling condition for an IPV4 address");
+                }
+
+                let (bytes, rest) = buffer.split_at(4);
+                *buffer = rest;
+
+                let arr: [u8; 4] = bytes.try_into().unwrap();
+                IpAddr::V4(Ipv4Addr::from(arr))
+            }
+
+            1 => {
+                if buffer.len() < 16 {
+                    println!("Not full filling condition for an IVP6 address");
+                }
+
+                let (bytes, rest) = buffer.split_at(4);
+                *buffer = rest;
+
+                let arr: [u8; 16] = bytes.try_into().unwrap();
+                IpAddr::V6(Ipv6Addr::from(arr))
+            }
+
+            _ => return Err("Invalid Ip version flag (expected 0 or 1"),
+        };
+
+        let port = u16::deserialze(buffer).unwrap();
+        Ok(SocketAddr::new(ip, port))
+    }
+}
+
+impl<'a> Deserializer<'a> for Vec<u8> {
+    fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
+        let len = u32::deserialze(buffer)? as usize;
+
+        if buffer.len() < len {
+            return Err("buffer is too short");
+        }
+
+        let (bytes, rest) = buffer.split_at(len);
+        *buffer = rest;
+
+        Ok(bytes.to_vec())
     }
 }
