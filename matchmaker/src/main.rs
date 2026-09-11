@@ -22,24 +22,28 @@ fn main() {
 
         loop {
             if let Ok((amt, src)) = socket_clone.recv_from(&mut buff) {
-                let actual_bytes = &buff[..amt];
                 let mut node_list = nodes_list_clone.lock().unwrap();
                 if node_list.0.contains_key(&src) {
-                    println!("Node with address: {src} is already available");
-                    return;
+                    println!("Node already exsting");
                 }
 
-                node_list.0.insert(src.clone(), actual_bytes.to_vec());
-                let copy_list = node_list.0.clone();
+                node_list.0.insert(src, buff[..amt].to_vec());
 
-                let mut buff: Vec<u8> = Vec::new();
-                let list_byte = Serializer::serialize(&copy_list, &mut buff);
+                // FILTEROUT SENDER IP
+                let list_clone: HashMap<SocketAddr, Vec<u8>> = node_list
+                    .0
+                    .iter()
+                    .filter(|&(k, _)| *k != src)
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
 
-                if copy_list.len() > 1 {
-                    // TODO: replace actual_bytes with real data to send
-                    socket_clone
-                        .send_to(actual_bytes, src)
-                        .expect("Failed to send address of: ");
+                let mut list_buffer = Vec::new();
+                Serializer::serialize(&list_clone, &mut list_buffer);
+
+                if list_clone.len() > 1 {
+                    socket
+                        .send_to(&list_buffer, src)
+                        .expect("Error while sending");
                 }
             }
         }
