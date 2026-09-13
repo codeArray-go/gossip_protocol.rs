@@ -1,6 +1,6 @@
 use crate::U256;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     hash::Hash,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
@@ -70,11 +70,31 @@ impl Serializer for SocketAddr {
     }
 }
 
-impl Serializer for Vec<u8> {
+impl<T> Serializer for Vec<T>
+where
+    T: Serializer,
+{
     fn serialize(&self, buffer: &mut Vec<u8>) {
         let len = self.len() as u32;
         len.serialize(buffer);
-        buffer.extend_from_slice(self);
+
+        for item in self {
+            item.serialize(buffer);
+        }
+    }
+}
+
+impl<T> Serializer for VecDeque<T>
+where
+    T: Serializer,
+{
+    fn serialize(&self, buffer: &mut Vec<u8>) {
+        let len = self.len() as u32;
+        len.serialize(buffer);
+
+        for item in self {
+            item.serialize(buffer);
+        }
     }
 }
 
@@ -215,7 +235,7 @@ impl<'a> Deserializer<'a> for SocketAddr {
                     println!("Not full filling condition for an IVP6 address");
                 }
 
-                let (bytes, rest) = buffer.split_at(4);
+                let (bytes, rest) = buffer.split_at(16);
                 *buffer = rest;
 
                 let arr: [u8; 16] = bytes.try_into().unwrap();
@@ -230,7 +250,10 @@ impl<'a> Deserializer<'a> for SocketAddr {
     }
 }
 
-impl<'a> Deserializer<'a> for Vec<u8> {
+impl<'a, T> Deserializer<'a> for Vec<T>
+where
+    T: Deserializer<'a>,
+{
     fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
         let len = u32::deserialze(buffer)? as usize;
 
@@ -238,9 +261,33 @@ impl<'a> Deserializer<'a> for Vec<u8> {
             return Err("buffer is too short");
         }
 
-        let (bytes, rest) = buffer.split_at(len);
-        *buffer = rest;
+        let mut vec = Vec::with_capacity(len);
 
-        Ok(bytes.to_vec())
+        for _ in 0..len {
+            vec.push(T::deserialze(buffer)?);
+        }
+
+        Ok(vec)
+    }
+}
+
+impl<'a, T> Deserializer<'a> for VecDeque<T>
+where
+    T: Deserializer<'a>,
+{
+    fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
+        let len = u32::deserialze(buffer)? as usize;
+
+        if buffer.len() < len {
+            return Err("buffer is too short");
+        }
+
+        let mut vec_dq = VecDeque::with_capacity(len);
+
+        for _ in 0..len {
+            vec_dq.push_front(T::deserialze(buffer)?);
+        }
+
+        Ok(vec_dq)
     }
 }
