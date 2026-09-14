@@ -1,6 +1,6 @@
 use crate::U256;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     hash::Hash,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
@@ -110,6 +110,20 @@ where
         for (key, value) in self {
             key.serialize(buffer);
             value.serialize(buffer);
+        }
+    }
+}
+
+impl<T> Serializer for HashSet<T>
+where
+    T: Serializer,
+{
+    fn serialize(&self, buffer: &mut Vec<u8>) {
+        let len = self.len() as u32;
+        len.serialize(buffer);
+
+        for item in self {
+            item.serialize(buffer)
         }
     }
 }
@@ -289,5 +303,26 @@ where
         }
 
         Ok(vec_dq)
+    }
+}
+
+impl<'a, T> Deserializer<'a> for HashSet<T>
+where
+    T: Deserializer<'a> + Eq + Hash,
+{
+    fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
+        let len = u32::deserialze(buffer)? as usize;
+
+        if buffer.len() < len {
+            return Err("Buffer is too short");
+        }
+
+        let mut set = HashSet::with_capacity(len);
+
+        for _ in 0..len {
+            set.insert(T::deserialze(buffer)?);
+        }
+
+        Ok(set)
     }
 }

@@ -1,5 +1,5 @@
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     net::{SocketAddr, UdpSocket},
     sync::{Arc, Mutex},
     thread,
@@ -9,15 +9,21 @@ use std::{
 use p2p_lib::byte_converter::Serializer;
 
 // Make 2 variable inside struct one to track whome to send list and them remove them and another for creating a list of address which we have to send don't remove element from it
-
-struct NodeList(VecDeque<SocketAddr>);
+struct NodesList {
+    combined_list: HashSet<SocketAddr>,
+    tracker: VecDeque<SocketAddr>,
+}
 
 fn main() {
     let socket = UdpSocket::bind("127.0.0.1:4200").expect("Failed to bind Udp Socket.");
     println!("Matchmaker server is Open on oprt: 4200");
     let socket_clone = socket.try_clone().expect("Failed to clone socket.");
 
-    let node_list = Arc::new(Mutex::new(NodeList(VecDeque::new())));
+    let node_list = Arc::new(Mutex::new(NodesList {
+        combined_list: HashSet::new(),
+        tracker: VecDeque::new(),
+    }));
+
     let list_clone = node_list.clone();
 
     thread::spawn(move || {
@@ -26,8 +32,9 @@ fn main() {
         loop {
             if let Ok((_amt, src)) = socket_clone.recv_from(&mut buff) {
                 let mut nodes_list = list_clone.lock().unwrap();
-                if !nodes_list.0.contains(&src) {
-                    nodes_list.0.push_back(src);
+                if !nodes_list.tracker.contains(&src) {
+                    nodes_list.tracker.push_back(src);
+                    nodes_list.combined_list.insert(src);
                 }
             }
         }
@@ -37,11 +44,11 @@ fn main() {
         let data = {
             let mut list = node_list.lock().unwrap();
 
-            if list.0.len() < 1 {
+            if list.combined_list.is_empty() {
                 None
             } else {
-                let target_add = list.0.pop_front().unwrap();
-                let new_list = list.0.clone();
+                let target_add = list.tracker.pop_front().unwrap();
+                let new_list = list.combined_list.clone();
 
                 Some((target_add, new_list))
             }
@@ -70,6 +77,6 @@ fn main() {
         }
 
         let mut list = node_list.lock().unwrap();
-        list.0.push_front(target_add);
+        list.tracker.push_front(target_add);
     }
 }
