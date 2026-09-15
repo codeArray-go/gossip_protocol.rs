@@ -1,10 +1,12 @@
-use crate::ChunkSended;
-use p2p_lib::{
+use crate::{
     U256,
     byte_converter::{Deserializer, Serializer},
     hash::Hash,
 };
-use std::net::{SocketAddr, UdpSocket};
+use std::{
+    collections::{BTreeMap, HashMap},
+    net::{SocketAddr, UdpSocket},
+};
 
 pub struct Chunk<'a> {
     pub id: U256,
@@ -12,6 +14,10 @@ pub struct Chunk<'a> {
     pub index: u16,
     pub total_chunks: u16,
 }
+
+// CHUNK TRACKER
+#[derive(Default)]
+pub struct ChunkSended(HashMap<U256, BTreeMap<u16, Vec<u8>>>);
 
 impl<'a> Serializer for Chunk<'a> {
     fn serialize(&self, buffer: &mut Vec<u8>) {
@@ -56,15 +62,14 @@ impl<'a> Deserializer<'a> for Chunk<'a> {
 }
 
 // CREATE CHUNK AND THEN SEND TO ALL PEERS
-impl ChunkSended {
+impl<'a> ChunkSended {
     pub fn send_in_chunks(
         &mut self,
-        msg: &str,
+        msg_byte: &'a [u8],
         msg_id: Hash,
         peers: Vec<SocketAddr>,
         socket: &UdpSocket,
     ) {
-        let msg_byte = msg.as_bytes();
         const MAX_SAFE_PAYLOAD: usize = 1400;
 
         let all_packet: Vec<(usize, &[u8])> =

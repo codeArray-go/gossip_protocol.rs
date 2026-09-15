@@ -1,6 +1,7 @@
-use crate::utils::Chunk;
 use net2::UdpSocketExt;
-use p2p_lib::{U256, byte_converter::Deserializer, hash::Hash};
+use p2p_lib::{
+    U256, byte_converter::Deserializer, hash::Hash, utils::{Chunk, ChunkSended},
+};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env,
@@ -8,8 +9,6 @@ use std::{
     sync::{Arc, Mutex},
     thread,
 };
-
-mod utils;
 
 struct NodeState {
     peer: Vec<SocketAddr>,
@@ -26,9 +25,6 @@ struct MessageState {
 struct ChunkVec {
     recv_msg_vec: HashMap<U256, BTreeMap<u16, Vec<u8>>>,
 }
-
-#[derive(Default)]
-pub struct ChunkSended(HashMap<U256, BTreeMap<u16, Vec<u8>>>);
 
 fn main() {
     // -------------------------------------------------------------------------
@@ -189,7 +185,9 @@ fn main() {
 
             let send_to_peers: Vec<SocketAddr> = peers.into_iter().take(10).collect();
 
-            sender_cache.send_in_chunks(&text, msg_id, send_to_peers, &socket);
+            let msg_byte = text.as_bytes();
+
+            sender_cache.send_in_chunks(msg_byte, msg_id, send_to_peers, &socket);
 
             // TODO:- After aknowledgment from receiver remove chunks from ChunkSended
         }
