@@ -1,17 +1,15 @@
+use p2p_lib::{byte_converter::Serializer, hash::Hash, utils::ChunkSended};
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::HashSet,
     net::{SocketAddr, UdpSocket},
     sync::{Arc, Mutex},
     thread,
     time::Duration,
 };
 
-use p2p_lib::byte_converter::Serializer;
-
-// Make 2 variable inside struct one to track whome to send list and them remove them and another for creating a list of address which we have to send don't remove element from it
 struct NodesList {
     combined_list: HashSet<SocketAddr>,
-    tracker: VecDeque<SocketAddr>,
+    tracker: Vec<SocketAddr>,
 }
 
 fn main() {
@@ -21,10 +19,12 @@ fn main() {
 
     let node_list = Arc::new(Mutex::new(NodesList {
         combined_list: HashSet::new(),
-        tracker: VecDeque::new(),
+        tracker: Vec::new(),
     }));
 
     let list_clone = node_list.clone();
+
+    let mut sender_cache = ChunkSended::default();
 
     thread::spawn(move || {
         let mut buff = [0u8; 4];
@@ -33,7 +33,7 @@ fn main() {
             if let Ok((_amt, src)) = socket_clone.recv_from(&mut buff) {
                 let mut nodes_list = list_clone.lock().unwrap();
                 if !nodes_list.tracker.contains(&src) {
-                    nodes_list.tracker.push_back(src);
+                    nodes_list.tracker.push(src);
                     nodes_list.combined_list.insert(src);
                 }
             }
@@ -42,19 +42,19 @@ fn main() {
 
     loop {
         let data = {
-            let mut list = node_list.lock().unwrap();
+            let list = node_list.lock().unwrap();
 
             if list.combined_list.is_empty() {
                 None
             } else {
-                let target_add = list.tracker.pop_front().unwrap();
+                let send_to_peers = list.tracker.clone();
                 let new_list = list.combined_list.clone();
 
-                Some((target_add, new_list))
+                Some((send_to_peers, new_list))
             }
         };
 
-        let (target_add, new_list) = match data {
+        let (send_to_peers, new_list) = match data {
             Some(data) => data,
 
             None => {
@@ -66,17 +66,11 @@ fn main() {
         let mut buffer = Vec::new();
         Serializer::serialize(&new_list, &mut buffer);
 
-        match socket.send_to(&buffer, target_add) {
-            Ok(_) => {
-                println!("Sent node list to {}", target_add);
-            }
+        let msg_id = Hash::of(&new_list);
 
-            Err(e) => {
-                println!("Failed to send to node: {}. Re-adding to queue.", e);
-            }
-        }
+        sender_cache.send_in_chunks(&buffer, msg_id, send_to_peers, &socket);
 
-        let mut list = node_list.lock().unwrap();
-        list.tracker.push_front(target_add);
+        // TODO:- add logic for adding ip back to target if faild to send packet
+        // TODO:- add logic to remove those ip whome list is sended successfully
     }
 }
