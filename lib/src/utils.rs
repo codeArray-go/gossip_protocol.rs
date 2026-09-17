@@ -69,13 +69,15 @@ impl<'a> ChunkSended {
         msg_id: Hash,
         peers: Vec<SocketAddr>,
         socket: &UdpSocket,
-    ) {
+    ) -> Result<(), Vec<SocketAddr>> {
         const MAX_SAFE_PAYLOAD: usize = 1400;
 
         let all_packet: Vec<(usize, &[u8])> =
             msg_byte.chunks(MAX_SAFE_PAYLOAD).enumerate().collect();
 
         let total_chunk = all_packet.len() as u16;
+
+        let mut rem_ip: Vec<SocketAddr> = Vec::new();
 
         for chunk_batch in all_packet.chunks(25) {
             let mut batch = Vec::with_capacity(chunk_batch.len());
@@ -106,10 +108,23 @@ impl<'a> ChunkSended {
             for packet in batch {
                 for peer_list in peers.chunks(5) {
                     for peer in peer_list {
-                        socket.send_to(&packet, peer).expect("Failed to send");
+                        match socket.send_to(&packet, peer) {
+                            Ok(_) => continue,
+                            Err(e) => {
+                                // Collect and send peer address back to whome unable to send packet
+                                eprintln!("Error: {e}");
+                                rem_ip.push(*peer);
+                            }
+                        }
                     }
                 }
             }
         }
+
+        if rem_ip.len() > 1 {
+            return Err(rem_ip);
+        }
+
+        Ok(())
     }
 }

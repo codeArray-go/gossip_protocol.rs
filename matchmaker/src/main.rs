@@ -68,9 +68,25 @@ fn main() {
 
         let msg_id = Hash::of(&new_list);
 
-        sender_cache.send_in_chunks(&buffer, msg_id, send_to_peers, &socket);
+        let peer_quantity = send_to_peers.len() as usize;
 
-        // TODO:- add logic for adding ip back to target if faild to send packet
-        // TODO:- add logic to remove those ip whome list is sended successfully
+        match sender_cache.send_in_chunks(&buffer, msg_id, send_to_peers, &socket) {
+            Ok(()) => {
+                // Removed those ip whome list is sended successfully
+                let mut list = node_list.lock().unwrap();
+                let curr_list_len = list.tracker.len() as usize;
+                list.tracker
+                    .drain((curr_list_len - peer_quantity)..=curr_list_len);
+            }
+            Err(lst) => {
+                // Adding ip back to target if faild to send packet
+                println!("Adding peer back to queue");
+                let mut list = node_list.lock().unwrap();
+
+                for peer in lst {
+                    list.tracker.push(peer);
+                }
+            }
+        }
     }
 }
