@@ -8,7 +8,7 @@ use p2p_lib::{
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env,
-    net::{SocketAddr, UdpSocket},
+    net::{SocketAddr, ToSocketAddrs, UdpSocket},
     sync::{Arc, Mutex},
     thread,
 };
@@ -51,7 +51,7 @@ fn main() {
     }));
 
     // --- Local Discovery Setup (Temporary) ---
-    // TODO: Remove this block once the Relay server is implemented.
+    // TODO: Remove this block once the Matchmaker server is hosted.
     let arg: Vec<String> = env::args().skip(1).collect();
 
     let socket = UdpSocket::bind(&arg[0]).expect("Give a correct port.");
@@ -64,11 +64,16 @@ fn main() {
     if arg.len() > 1 {
         let mut node = state.lock().unwrap();
         let addrs = &arg[1];
-        if let Ok(peers) = addrs.parse::<SocketAddr>() {
-            node.peer.push(peers);
-            println!("Peer connected: {peers}");
+
+        if let Ok(mut resolved_addr) = addrs.to_socket_addrs() {
+            if let Some(peer_add) = resolved_addr.next() {
+                node.peer.push(peer_add);
+                println!("Peer connected: {peer_add}");
+            } else {
+                println!("Address resolve hua, par koi IP nahi mili.");
+            }
         } else {
-            println!("Wrong address provided.");
+            println!("Wrong address provided ya DNS resolution fail ho gaya.");
         }
     }
     // -----------------------------------------
