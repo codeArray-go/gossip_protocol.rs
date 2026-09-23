@@ -1,6 +1,7 @@
 use p2p_lib::{byte_converter::Serializer, hash::Hash, utils::ChunkSended};
 use std::{
     collections::HashSet,
+    env,
     net::{SocketAddr, UdpSocket},
     sync::{Arc, Mutex},
     thread,
@@ -13,8 +14,11 @@ struct NodesList {
 }
 
 fn main() {
-    let socket = UdpSocket::bind("127.0.0.1:4200").expect("Failed to bind Udp Socket.");
-    println!("Matchmaker server is Open on oprt: 4200");
+    let port = env::var("PORT").unwrap_or_else(|_| "4200".to_string());
+    let add = format!("0.0.0.0:{port}");
+
+    let socket = UdpSocket::bind(&add).expect("Failed to bind Udp Socket.");
+    println!("Matchmaker server is Open on: {add}");
     let socket_clone = socket.try_clone().expect("Failed to clone socket.");
 
     let node_list = Arc::new(Mutex::new(NodesList {
@@ -76,7 +80,7 @@ fn main() {
                 let mut list = node_list.lock().unwrap();
                 let curr_list_len = list.tracker.len() as usize;
                 list.tracker
-                    .drain((curr_list_len - peer_quantity)..=curr_list_len);
+                    .drain(curr_list_len.saturating_sub(peer_quantity)..);
             }
             Err(lst) => {
                 // Adding ip back to target if faild to send packet

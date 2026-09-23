@@ -1,6 +1,9 @@
 use net2::UdpSocketExt;
 use p2p_lib::{
-    U256, byte_converter::Deserializer, hash::Hash, utils::{Chunk, ChunkSended},
+    U256,
+    byte_converter::Deserializer,
+    hash::Hash,
+    utils::{Chunk, ChunkSended},
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -187,7 +190,10 @@ fn main() {
 
             let msg_byte = text.as_bytes();
 
-            sender_cache.send_in_chunks(msg_byte, msg_id, send_to_peers, &socket);
+            // TODO:- Handle error correctly as with error there will be ip of those whome failed to send chunks
+            sender_cache
+                .send_in_chunks(msg_byte, msg_id, send_to_peers, &socket)
+                .expect("Failed to send");
 
             // TODO:- After aknowledgment from receiver remove chunks from ChunkSended
         }

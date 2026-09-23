@@ -5,7 +5,9 @@ use crate::{
 };
 use std::{
     collections::{BTreeMap, HashMap},
+    io::ErrorKind,
     net::{SocketAddr, UdpSocket},
+    thread,
 };
 
 pub struct Chunk<'a> {
@@ -77,7 +79,7 @@ impl<'a> ChunkSended {
 
         let total_chunk = all_packet.len() as u16;
 
-        let mut rem_ip: Vec<SocketAddr> = Vec::new();
+        let mut rm_ip: Vec<SocketAddr> = Vec::new();
 
         for chunk_batch in all_packet.chunks(25) {
             let mut batch = Vec::with_capacity(chunk_batch.len());
@@ -105,24 +107,36 @@ impl<'a> ChunkSended {
                 batch.push(buffer);
             }
 
-            for packet in batch {
-                for peer_list in peers.chunks(5) {
-                    for peer in peer_list {
-                        match socket.send_to(&packet, peer) {
-                            Ok(_) => continue,
-                            Err(e) => {
-                                // Collect and send peer address back to whome unable to send packet
+            for peer_list in peers.chunks(5) {
+                let mut active_peers = peer_list.to_vec();
+
+                for packet in &batch {
+                    active_peers.retain(|peer| match socket.send_to(&packet, peer) {
+                        Ok(_) => true,
+                        Err(e) => {
+                            // Checking if OS buffer filled completely
+                            if e.kind() == ErrorKind::WouldBlock
+                                || e.kind() == ErrorKind::Interrupted
+                            {
+                                thread::yield_now();
+                                true
+                            } else {
                                 eprintln!("Error: {e}");
-                                rem_ip.push(*peer);
+                                rm_ip.push(*peer);
+                                false
                             }
                         }
+                    });
+
+                    if active_peers.is_empty() {
+                        break;
                     }
                 }
             }
         }
 
-        if rem_ip.len() > 1 {
-            return Err(rem_ip);
+        if !rm_ip.is_empty() {
+            return Err(rm_ip);
         }
 
         Ok(())
