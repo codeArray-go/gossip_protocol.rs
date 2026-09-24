@@ -1,7 +1,6 @@
-use p2p_lib::{byte_converter::Serializer, hash::Hash, utils::ChunkSended};
+use p2p_lib::{NetworkManager, hash::Hash, utils::ChunkSended};
 use std::{
     collections::HashSet,
-    env,
     net::{SocketAddr, UdpSocket},
     sync::{Arc, Mutex},
     thread,
@@ -14,8 +13,7 @@ struct NodesList {
 }
 
 fn main() {
-    let port = env::var("PORT").unwrap_or_else(|_| "4200".to_string());
-    let add = format!("0.0.0.0:{port}");
+    let add = format!("127.0.0.1:4200");
 
     let socket = UdpSocket::bind(&add).expect("Failed to bind Udp Socket.");
     println!("Matchmaker server is Open on: {add}");
@@ -33,10 +31,12 @@ fn main() {
     thread::spawn(move || {
         let mut buff = [0u8; 4];
 
+        // --- LISTNER ---
         loop {
             if let Ok((_amt, src)) = socket_clone.recv_from(&mut buff) {
                 let mut nodes_list = list_clone.lock().unwrap();
                 if !nodes_list.tracker.contains(&src) {
+                    println!("{src}");
                     nodes_list.tracker.push(src);
                     nodes_list.combined_list.insert(src);
                 }
@@ -67,14 +67,12 @@ fn main() {
             }
         };
 
-        let mut buffer = Vec::new();
-        Serializer::serialize(&new_list, &mut buffer);
-
         let msg_id = Hash::of(&new_list);
+        let msg = NetworkManager::SharedPeers(new_list);
 
         let peer_quantity = send_to_peers.len() as usize;
 
-        match sender_cache.send_in_chunks(&buffer, msg_id, send_to_peers, &socket) {
+        match sender_cache.send_in_chunks(msg, msg_id, send_to_peers, &socket) {
             Ok(()) => {
                 // Removed those ip whome list is sended successfully
                 let mut list = node_list.lock().unwrap();

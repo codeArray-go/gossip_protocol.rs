@@ -1,5 +1,5 @@
 use crate::{
-    U256,
+    NetworkManager, U256,
     byte_converter::{Deserializer, Serializer},
     hash::Hash,
 };
@@ -67,12 +67,16 @@ impl<'a> Deserializer<'a> for Chunk<'a> {
 impl<'a> ChunkSended {
     pub fn send_in_chunks(
         &mut self,
-        msg_byte: &'a [u8],
+        // msg_byte: &'a [u8],
+        msg: NetworkManager,
         msg_id: Hash,
         peers: Vec<SocketAddr>,
         socket: &UdpSocket,
     ) -> Result<(), Vec<SocketAddr>> {
         const MAX_SAFE_PAYLOAD: usize = 1400;
+
+        let mut msg_byte = Vec::new();
+        Serializer::serialize(&msg, &mut msg_byte);
 
         let all_packet: Vec<(usize, &[u8])> =
             msg_byte.chunks(MAX_SAFE_PAYLOAD).enumerate().collect();
@@ -112,7 +116,9 @@ impl<'a> ChunkSended {
 
                 for packet in &batch {
                     active_peers.retain(|peer| match socket.send_to(&packet, peer) {
-                        Ok(_) => true,
+                        Ok(_) => {
+                            return true;
+                        }
                         Err(e) => {
                             // Checking if OS buffer filled completely
                             if e.kind() == ErrorKind::WouldBlock

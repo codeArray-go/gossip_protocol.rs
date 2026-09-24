@@ -1,6 +1,6 @@
 use net2::UdpSocketExt;
 use p2p_lib::{
-    U256,
+    NetworkManager, U256,
     byte_converter::Deserializer,
     hash::Hash,
     utils::{Chunk, ChunkSended},
@@ -12,7 +12,6 @@ use std::{
     sync::{Arc, Mutex},
     thread,
 };
-
 struct NodeState {
     peer: Vec<SocketAddr>,
     msg_seen: HashSet<String>,
@@ -61,21 +60,28 @@ fn main() {
         .expect("Failed to set buffer size");
     let socket_clone = socket.try_clone().expect("Error while cloning.");
 
-    if arg.len() > 1 {
+    {
         let mut node = state.lock().unwrap();
-        let addrs = &arg[1];
 
-        if let Ok(mut resolved_addr) = addrs.to_socket_addrs() {
-            if let Some(peer_add) = resolved_addr.next() {
-                node.peer.push(peer_add);
-                println!("Peer connected: {peer_add}");
+        if node.peer.is_empty() {
+            let addrs = "della-awakenings.tun.ply.gg:38576";
+            if let Ok(mut resolved_addr) = addrs.to_socket_addrs() {
+                if let Some(peer_add) = resolved_addr.next() {
+                    node.peer.push(peer_add);
+                    println!(
+                        "Matchmaker({peer_add}) is connected send 'hi' message to get list of peers"
+                    );
+                } else {
+                    println!("Address resolve hua, par koi IP nahi mili.");
+                }
             } else {
-                println!("Address resolve hua, par koi IP nahi mili.");
+                println!("Wrong address provided ya DNS resolution fail ho gaya.");
             }
         } else {
-            println!("Wrong address provided ya DNS resolution fail ho gaya.");
+            println!("Fetched saved ip successfully");
         }
     }
+
     // -----------------------------------------
 
     let chunk_vec = Arc::new(Mutex::new(ChunkVec {
@@ -147,7 +153,8 @@ fn main() {
                         && (chunks.len() as u16) == stored_total
                     {
                         let combined_byte: Vec<u8> = chunks.values().flatten().copied().collect();
-                        match String::from_utf8(combined_byte) {
+                        let mut combo_byte_as_u8 = combined_byte.as_slice();
+                        match NetworkManager::deserialze(&mut combo_byte_as_u8) {
                             Ok(message) => {
                                 node.msg_seen.insert(format!("{:?}", msg.id));
                                 println!("[{:?}]:- msg: {:?}", src, message);
@@ -172,14 +179,14 @@ fn main() {
     let mut input = String::new();
     let mut sender_cache = ChunkSended::default();
 
-    // MESSAGE SENDER
+    // --- MESSAGE SENDER ---
     loop {
         input.clear();
         stdin.read_line(&mut input).unwrap();
         let text = input.trim().to_string();
 
         // -- PASSING FILE --
-        // -- TODO: To pass file uncomment code and replace above 'text' variable name with 'path'
+        // To pass file uncomment code and replace above 'text' variable name with 'path'
         // let text = fs::read_to_string(path).expect("Faild to read file");
 
         if !text.is_empty() {
@@ -193,11 +200,11 @@ fn main() {
 
             let send_to_peers: Vec<SocketAddr> = peers.into_iter().take(10).collect();
 
-            let msg_byte = text.as_bytes();
+            let msg = NetworkManager::Text(text);
 
             // TODO:- Handle error correctly as with error there will be ip of those whome failed to send chunks
             sender_cache
-                .send_in_chunks(msg_byte, msg_id, send_to_peers, &socket)
+                .send_in_chunks(msg, msg_id, send_to_peers, &socket)
                 .expect("Failed to send");
 
             // TODO:- After aknowledgment from receiver remove chunks from ChunkSended

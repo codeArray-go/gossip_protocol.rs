@@ -1,4 +1,4 @@
-use crate::U256;
+use crate::{NetworkManager, U256};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     hash::Hash,
@@ -128,6 +128,27 @@ where
     }
 }
 
+impl Serializer for NetworkManager {
+    fn serialize(&self, buffer: &mut Vec<u8>) {
+        match self {
+            NetworkManager::Text(text) => {
+                0u8.serialize(buffer); // 0 for text
+                text.serialize(buffer);
+            }
+
+            NetworkManager::SharedPeers(peers) => {
+                1u8.serialize(buffer); // 1 for peers
+                peers.serialize(buffer);
+            }
+
+            NetworkManager::RawData(raw) => {
+                2u8.serialize(buffer); // 2 for raw data
+                raw.serialize(buffer);
+            }
+        }
+    }
+}
+
 // DESERIALIZER
 pub trait Deserializer<'a>: Sized {
     fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str>;
@@ -145,6 +166,18 @@ impl<'a> Deserializer<'a> for &'a [u8] {
         *buffer = rest;
 
         Ok(bytes)
+    }
+}
+
+impl<'a> Deserializer<'a> for u8 {
+    fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
+        if buffer.is_empty() {
+            return Err("Too small for u8 value");
+        }
+
+        let val = buffer[0];
+        *buffer = &buffer[1..];
+        Ok(val)
     }
 }
 
@@ -324,5 +357,29 @@ where
         }
 
         Ok(set)
+    }
+}
+
+impl<'a> Deserializer<'a> for NetworkManager {
+    fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
+        let flag = u8::deserialze(buffer)?;
+        match flag {
+            0 => {
+                let text = String::deserialze(buffer)?;
+                Ok(NetworkManager::Text(text))
+            }
+
+            1 => {
+                let peers = HashSet::deserialze(buffer)?;
+                Ok(NetworkManager::SharedPeers(peers))
+            }
+
+            2 => {
+                let raw_data = Vec::deserialze(buffer)?;
+                Ok(NetworkManager::RawData(raw_data))
+            }
+
+            _ => Err("Unknown message flag received"),
+        }
     }
 }
