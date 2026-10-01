@@ -12,6 +12,10 @@ use std::{
     sync::{Arc, Mutex},
     thread,
 };
+
+use crate::utils::save_to_file;
+
+pub mod utils;
 struct NodeState {
     peer: Vec<SocketAddr>,
     msg_seen: HashSet<String>,
@@ -52,8 +56,10 @@ fn main() {
     // --- Local Discovery Setup (Temporary) ---
     // TODO: Remove this block once the Matchmaker server is hosted.
     let arg: Vec<String> = env::args().skip(1).collect();
+    let port = &arg[0];
 
-    let socket = UdpSocket::bind(&arg[0]).expect("Give a correct port.");
+    let add = format!("0.0.0.0:{port}");
+    let socket = UdpSocket::bind(add).expect("Give a correct port.");
     // Increased buffer size at OS level till 2mb
     socket
         .set_send_buffer_size(1024 * 1024 * 2)
@@ -157,7 +163,21 @@ fn main() {
                         match NetworkManager::deserialze(&mut combo_byte_as_u8) {
                             Ok(message) => {
                                 node.msg_seen.insert(format!("{:?}", msg.id));
-                                println!("[{:?}]:- msg: {:?}", src, message);
+
+                                match message {
+                                    NetworkManager::Text(msg) => {
+                                        println!(" [{:?}]:- message is: {:?}", src, msg);
+                                    }
+                                    NetworkManager::SharedPeers(msg) => {
+                                        // SAVED PEER LIST TO FILE
+                                        let file_path = "addr.peer.bin";
+                                        save_to_file(file_path, &msg)
+                                            .expect("Failed to save to file");
+                                    }
+                                    NetworkManager::RawData(msg) => {
+                                        println!(" [{:?}]:- message is: {:?}", src, msg);
+                                    }
+                                }
                             }
                             Err(e) => {
                                 println!("Error: Bytes are not valid UTF-8 text: {}", e);

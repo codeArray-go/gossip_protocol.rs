@@ -50,6 +50,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bytemuck"
+version = "1.25.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95832e849adfb21180ccb6826a99da14e5d266ae5c2e668e1602cf234f153797"
+
+[[package]]
 name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -413,6 +419,7 @@ dependencies = [
 name = "scratch_p2p"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "net2",
  "p2p_lib",
 ]
