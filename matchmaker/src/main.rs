@@ -81,7 +81,7 @@ fn main() {
                     .drain(curr_list_len.saturating_sub(peer_quantity)..);
             }
             Err(lst) => {
-                // Adding ip back to target if faild to send packet
+                // Adding ip back to target if failed to send packet
                 println!("Adding peer back to queue");
                 let mut list = node_list.lock().unwrap();
 

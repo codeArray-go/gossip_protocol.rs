@@ -10,11 +10,33 @@ use std::{
     thread,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum MsgType {
+    TypeAck = 0,
+    Text = 1,
+    ReRequest = 2,
+}
+
 pub struct Chunk<'a> {
     pub id: U256,
+    pub msg_type: MsgType,
     pub msg: &'a [u8],
     pub index: u16,
     pub total_chunks: u16,
+}
+
+impl TryFrom<u8> for MsgType {
+    type Error = &'static str;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(MsgType::TypeAck),
+            1 => Ok(MsgType::Text),
+            2 => Ok(MsgType::ReRequest),
+            _ => Err("Invalid message type byte recieved"),
+        }
+    }
 }
 
 // CHUNK TRACKER

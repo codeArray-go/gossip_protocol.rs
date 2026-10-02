@@ -9,11 +9,12 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env,
     net::{SocketAddr, ToSocketAddrs, UdpSocket},
+    path::Path,
     sync::{Arc, Mutex},
-    thread,
+    thread, vec,
 };
 
-use crate::utils::save_to_file;
+use crate::utils::{read_from_file, save_to_file};
 
 pub mod utils;
 struct NodeState {
@@ -66,27 +67,7 @@ fn main() {
         .expect("Failed to set buffer size");
     let socket_clone = socket.try_clone().expect("Error while cloning.");
 
-    {
-        let mut node = state.lock().unwrap();
-
-        if node.peer.is_empty() {
-            let addrs = "della-awakenings.tun.ply.gg:38576";
-            if let Ok(mut resolved_addr) = addrs.to_socket_addrs() {
-                if let Some(peer_add) = resolved_addr.next() {
-                    node.peer.push(peer_add);
-                    println!(
-                        "Matchmaker({peer_add}) is connected send 'hi' message to get list of peers"
-                    );
-                } else {
-                    println!("Address resolve hua, par koi IP nahi mili.");
-                }
-            } else {
-                println!("Wrong address provided ya DNS resolution fail ho gaya.");
-            }
-        } else {
-            println!("Fetched saved ip successfully");
-        }
-    }
+    // FILLED node.peers IF FILE ALREADY EXISTS THERE ELSE CONNECT TO MATCHMAKER
 
     // -----------------------------------------
 
@@ -193,8 +174,6 @@ fn main() {
         }
     });
 
-    println!("Type your message and press enter to send. ");
-
     let stdin = std::io::stdin();
     let mut input = String::new();
     let mut sender_cache = ChunkSended::default();
@@ -213,9 +192,30 @@ fn main() {
             let msg_id = Hash::of(&text);
 
             let peers: Vec<SocketAddr> = {
+                let path = Path::new("./addr.peer.bin");
                 let mut node = state.lock().unwrap();
+
                 node.msg_seen.insert(format!("{:?}", msg_id));
-                node.peer.clone()
+
+                // TAKE PEER FROM LIST WHEN AVAILABLE ELSE FROM SERVER
+                if node.peer.is_empty() {
+                    read_from_file(path)
+                        .ok()
+                        .map(|addr| {
+                            node.peer.extend(addr);
+                            node.peer.clone()
+                        })
+                        .unwrap_or_else(|| {
+                            "della-awakenings.tun.ply.gg:38576"
+                                .to_socket_addrs()
+                                .ok()
+                                .and_then(|mut resolved_add| resolved_add.next())
+                                .map(|peer_addr| vec![peer_addr])
+                                .unwrap_or_default()
+                        })
+                } else {
+                    node.peer.clone()
+                }
             };
 
             let send_to_peers: Vec<SocketAddr> = peers.into_iter().take(10).collect();
