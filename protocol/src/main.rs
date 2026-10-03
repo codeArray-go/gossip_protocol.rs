@@ -1,6 +1,6 @@
 use net2::UdpSocketExt;
 use p2p_lib::{
-    NetworkManager, U256,
+    Message, U256,
     byte_converter::Deserializer,
     hash::Hash,
     utils::{Chunk, ChunkSended},
@@ -60,6 +60,7 @@ fn main() {
     let port = &arg[0];
 
     let add = format!("0.0.0.0:{port}");
+    println!("Running currenlty on: {:?}", &add);
     let socket = UdpSocket::bind(add).expect("Give a correct port.");
     // Increased buffer size at OS level till 2mb
     socket
@@ -141,22 +142,25 @@ fn main() {
                     {
                         let combined_byte: Vec<u8> = chunks.values().flatten().copied().collect();
                         let mut combo_byte_as_u8 = combined_byte.as_slice();
-                        match NetworkManager::deserialze(&mut combo_byte_as_u8) {
+                        match Message::deserialze(&mut combo_byte_as_u8) {
                             Ok(message) => {
                                 node.msg_seen.insert(format!("{:?}", msg.id));
 
                                 match message {
-                                    NetworkManager::Text(msg) => {
+                                    Message::Chat(msg) => {
                                         println!(" [{:?}]:- message is: {:?}", src, msg);
                                     }
-                                    NetworkManager::SharedPeers(msg) => {
+                                    Message::SharedPeers(peers) => {
                                         // SAVED PEER LIST TO FILE
                                         let file_path = "addr.peer.bin";
-                                        save_to_file(file_path, &msg)
+                                        save_to_file(file_path, &peers)
                                             .expect("Failed to save to file");
                                     }
-                                    NetworkManager::RawData(msg) => {
-                                        println!(" [{:?}]:- message is: {:?}", src, msg);
+                                    Message::ReRequest => {
+                                        // TODO:- send chunk again of index rerequest came
+                                    }
+                                    Message::TypeAck => {
+                                        // TODO:- After aknowledgment from receiver remove chunks from ChunkSended
                                     }
                                 }
                             }
@@ -220,14 +224,12 @@ fn main() {
 
             let send_to_peers: Vec<SocketAddr> = peers.into_iter().take(10).collect();
 
-            let msg = NetworkManager::Text(text);
+            let msg = Message::Chat(text);
 
             // TODO:- Handle error correctly as with error there will be ip of those whome failed to send chunks
             sender_cache
                 .send_in_chunks(msg, msg_id, send_to_peers, &socket)
                 .expect("Failed to send");
-
-            // TODO:- After aknowledgment from receiver remove chunks from ChunkSended
         }
     }
 }

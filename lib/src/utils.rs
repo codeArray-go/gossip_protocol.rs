@@ -1,5 +1,5 @@
 use crate::{
-    NetworkManager, U256,
+    Message, U256,
     byte_converter::{Deserializer, Serializer},
     hash::Hash,
 };
@@ -10,33 +10,11 @@ use std::{
     thread,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum MsgType {
-    TypeAck = 0,
-    Text = 1,
-    ReRequest = 2,
-}
-
 pub struct Chunk<'a> {
     pub id: U256,
-    pub msg_type: MsgType,
     pub msg: &'a [u8],
     pub index: u16,
     pub total_chunks: u16,
-}
-
-impl TryFrom<u8> for MsgType {
-    type Error = &'static str;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(MsgType::TypeAck),
-            1 => Ok(MsgType::Text),
-            2 => Ok(MsgType::ReRequest),
-            _ => Err("Invalid message type byte recieved"),
-        }
-    }
 }
 
 // CHUNK TRACKER
@@ -46,6 +24,7 @@ pub struct ChunkSended(HashMap<U256, BTreeMap<u16, Vec<u8>>>);
 impl<'a> Serializer for Chunk<'a> {
     fn serialize(&self, buffer: &mut Vec<u8>) {
         self.id.serialize(buffer);
+        self.msg.serialize(buffer);
         self.index.serialize(buffer);
         self.msg.serialize(buffer);
         self.total_chunks.serialize(buffer);
@@ -63,17 +42,17 @@ impl<'a> Deserializer<'a> for Chunk<'a> {
         // 2. Message ID / Hash
         let id = U256::deserialze(buffer)?;
 
-        // 3. Chunk Index (2 bytes after the payload)
+        // 4. Chunk Index (2 bytes after the payload)
         let index = u16::deserialze(buffer)?;
 
-        // 4. Message Payload Length a u32 value
+        // 5. Message Payload Length a u32 value
         let msg_len = u32::deserialze(buffer)? as usize;
 
-        // 5. Message Payload
+        // 6. Message Payload
         let (msg, rest) = buffer.split_at(msg_len);
         *buffer = rest;
 
-        // 6. Total Chunks count (2 bytes after the index)
+        // 7. Total Chunks count (2 bytes after the index)
         let total_chunks = u16::deserialze(buffer)?;
 
         Ok(Chunk {
@@ -89,8 +68,7 @@ impl<'a> Deserializer<'a> for Chunk<'a> {
 impl<'a> ChunkSended {
     pub fn send_in_chunks(
         &mut self,
-        // msg_byte: &'a [u8],
-        msg: NetworkManager,
+        msg: Message,
         msg_id: Hash,
         peers: Vec<SocketAddr>,
         socket: &UdpSocket,
@@ -98,7 +76,7 @@ impl<'a> ChunkSended {
         const MAX_SAFE_PAYLOAD: usize = 1400;
 
         let mut msg_byte = Vec::new();
-        Serializer::serialize(&msg, &mut msg_byte);
+        Message::serialize(&msg, &mut msg_byte);
 
         let all_packet: Vec<(usize, &[u8])> =
             msg_byte.chunks(MAX_SAFE_PAYLOAD).enumerate().collect();
@@ -137,7 +115,7 @@ impl<'a> ChunkSended {
                 let mut active_peers = peer_list.to_vec();
 
                 for packet in &batch {
-                    active_peers.retain(|peer| match socket.send_to(&packet, peer) {
+                    active_peers.retain(|peer| match socket.send_to(packet, peer) {
                         Ok(_) => {
                             return true;
                         }

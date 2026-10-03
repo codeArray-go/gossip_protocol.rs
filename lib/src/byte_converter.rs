@@ -1,4 +1,4 @@
-use crate::{NetworkManager, U256};
+use crate::{Message, U256};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     hash::Hash,
@@ -128,22 +128,22 @@ where
     }
 }
 
-impl Serializer for NetworkManager {
+impl Serializer for Message {
     fn serialize(&self, buffer: &mut Vec<u8>) {
         match self {
-            NetworkManager::Text(text) => {
-                0u8.serialize(buffer); // 0 for text
-                text.serialize(buffer);
+            Message::Chat(val) => {
+                buffer.push(b'C');
+                val.serialize(buffer);
             }
-
-            NetworkManager::SharedPeers(peers) => {
-                1u8.serialize(buffer); // 1 for peers
-                peers.serialize(buffer);
+            Message::TypeAck => {
+                buffer.push(b'A');
             }
-
-            NetworkManager::RawData(raw) => {
-                2u8.serialize(buffer); // 2 for raw data
-                raw.serialize(buffer);
+            Message::ReRequest => {
+                buffer.push(b'R');
+            }
+            Message::SharedPeers(peer) => {
+                buffer.push(b'S');
+                peer.serialize(buffer);
             }
         }
     }
@@ -360,26 +360,18 @@ where
     }
 }
 
-impl<'a> Deserializer<'a> for NetworkManager {
+impl<'a> Deserializer<'a> for Message {
     fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
-        let flag = u8::deserialze(buffer)?;
-        match flag {
-            0 => {
-                let text = String::deserialze(buffer)?;
-                Ok(NetworkManager::Text(text))
-            }
+        if buffer.is_empty() {
+            return Err("Empty buffer");
+        }
 
-            1 => {
-                let peers = HashSet::deserialze(buffer)?;
-                Ok(NetworkManager::SharedPeers(peers))
-            }
-
-            2 => {
-                let raw_data = Vec::deserialze(buffer)?;
-                Ok(NetworkManager::RawData(raw_data))
-            }
-
-            _ => Err("Unknown message flag received"),
+        match buffer[0] {
+            b'C' => Ok(Message::Chat(String::deserialze(buffer)?)),
+            b'A' => Ok(Message::TypeAck),
+            b'R' => Ok(Message::ReRequest),
+            b'S' => Ok(Message::SharedPeers(HashSet::deserialze(buffer)?)),
+            _ => Err("Failed to fetch Message due to invalid data"),
         }
     }
 }
