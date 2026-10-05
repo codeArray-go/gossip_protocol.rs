@@ -159,7 +159,7 @@ impl<'a> Deserializer<'a> for &'a [u8] {
         let len = u32::deserialze(buffer)? as usize;
 
         if buffer.len() < len {
-            return Err("Buffer is too short");
+            return Err("Buffer is too short for &[u8] value");
         }
 
         let (bytes, rest) = buffer.split_at(len);
@@ -347,7 +347,7 @@ where
         let len = u32::deserialze(buffer)? as usize;
 
         if buffer.len() < len {
-            return Err("Buffer is too short");
+            return Err("Buffer is too short for HashSet");
         }
 
         let mut set = HashSet::with_capacity(len);
@@ -366,7 +366,11 @@ impl<'a> Deserializer<'a> for Message {
             return Err("Empty buffer");
         }
 
-        match buffer[0] {
+        let tag = buffer[0];
+
+        *buffer = &buffer[1..];
+
+        match tag {
             b'C' => Ok(Message::Chat(String::deserialze(buffer)?)),
             b'A' => Ok(Message::TypeAck),
             b'R' => Ok(Message::ReRequest),

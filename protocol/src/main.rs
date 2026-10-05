@@ -165,7 +165,7 @@ fn main() {
                                 }
                             }
                             Err(e) => {
-                                println!("Error: Bytes are not valid UTF-8 text: {}", e);
+                                println!("Error: Bytes are not valid: {}", e);
                                 chunk_vec.recv_msg_vec.remove(&msg.id);
                             }
                         }

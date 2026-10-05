@@ -26,33 +26,28 @@ impl<'a> Serializer for Chunk<'a> {
         self.id.serialize(buffer);
         self.msg.serialize(buffer);
         self.index.serialize(buffer);
-        self.msg.serialize(buffer);
         self.total_chunks.serialize(buffer);
     }
 }
 
 impl<'a> Deserializer<'a> for Chunk<'a> {
     fn deserialze(buffer: &mut &'a [u8]) -> std::prelude::v1::Result<Self, &'static str> {
-        // 1. Min header size: 32 (Hash) + 4 (msg_len) + 2 (index) + 2 (total_chunks) = 40 bytes
+        // Min header size: 32 (Hash) + 4 (msg_len) + 2 (index) + 2 (total_chunks) = 40 bytes
         const MIN_HEADER_SIZE: usize = 40;
         if buffer.len() < MIN_HEADER_SIZE {
             return Err("Buffer is too small for a valid message chunk");
         }
 
-        // 2. Message ID / Hash
+        // 1. Message ID / Hash (32 bytes)
         let id = U256::deserialze(buffer)?;
 
-        // 4. Chunk Index (2 bytes after the payload)
+        // 2. Message Payload
+        let msg = <&[u8] as Deserializer>::deserialze(buffer)?;
+
+        // 3. Chunk Index (2 bytes)
         let index = u16::deserialze(buffer)?;
 
-        // 5. Message Payload Length a u32 value
-        let msg_len = u32::deserialze(buffer)? as usize;
-
-        // 6. Message Payload
-        let (msg, rest) = buffer.split_at(msg_len);
-        *buffer = rest;
-
-        // 7. Total Chunks count (2 bytes after the index)
+        // 4. Total Chunks count (2 bytes)
         let total_chunks = u16::deserialze(buffer)?;
 
         Ok(Chunk {
