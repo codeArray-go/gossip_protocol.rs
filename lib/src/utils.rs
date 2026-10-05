@@ -64,11 +64,12 @@ impl<'a> ChunkSended {
     pub fn send_in_chunks(
         &mut self,
         msg: Message,
-        msg_id: Hash,
         peers: Vec<SocketAddr>,
         socket: &UdpSocket,
-    ) -> Result<(), Vec<SocketAddr>> {
+    ) -> Result<Hash, Vec<SocketAddr>> {
         const MAX_SAFE_PAYLOAD: usize = 1400;
+
+        let msg_id = Hash::of(&msg);
 
         let mut msg_byte = Vec::new();
         Message::serialize(&msg, &mut msg_byte);
@@ -85,7 +86,7 @@ impl<'a> ChunkSended {
 
             for (index, chunk_slice) in chunk_batch {
                 let chunk = Chunk {
-                    id: msg_id.0.clone(),
+                    id: msg_id.0,
                     msg: chunk_slice,
                     index: *index as u16,
                     total_chunks: total_chunk,
@@ -140,6 +141,6 @@ impl<'a> ChunkSended {
             return Err(rm_ip);
         }
 
-        Ok(())
+        Ok(msg_id)
     }
 }

@@ -2,7 +2,6 @@ use net2::UdpSocketExt;
 use p2p_lib::{
     Message, U256,
     byte_converter::Deserializer,
-    hash::Hash,
     utils::{Chunk, ChunkSended},
 };
 use std::{
@@ -156,11 +155,11 @@ fn main() {
                                         save_to_file(file_path, &peers)
                                             .expect("Failed to save to file");
                                     }
-                                    Message::ReRequest => {
-                                        // TODO:- send chunk again of index rerequest came
+                                    Message::ReRequest(_id) => {
+                                        // TODO:- send chunk again of index re-request came
                                     }
-                                    Message::TypeAck => {
-                                        // TODO:- After aknowledgment from receiver remove chunks from ChunkSended
+                                    Message::TypeAck(_id) => {
+                                        // TODO:- After aknowledgment from receiver remove chunks of index from ChunkSended
                                     }
                                 }
                             }
@@ -193,13 +192,9 @@ fn main() {
         // let text = fs::read_to_string(path).expect("Faild to read file");
 
         if !text.is_empty() {
-            let msg_id = Hash::of(&text);
-
             let peers: Vec<SocketAddr> = {
                 let path = Path::new("./addr.peer.bin");
                 let mut node = state.lock().unwrap();
-
-                node.msg_seen.insert(format!("{:?}", msg_id));
 
                 // TAKE PEER FROM LIST WHEN AVAILABLE ELSE FROM SERVER
                 if node.peer.is_empty() {
@@ -227,9 +222,12 @@ fn main() {
             let msg = Message::Chat(text);
 
             // TODO:- Handle error correctly as with error there will be ip of those whome failed to send chunks
-            sender_cache
-                .send_in_chunks(msg, msg_id, send_to_peers, &socket)
+            let msg_id = sender_cache
+                .send_in_chunks(msg, send_to_peers, &socket)
                 .expect("Failed to send");
+
+            let mut node = state.lock().unwrap();
+            node.msg_seen.insert(format!("{:?}", msg_id));
         }
     }
 }

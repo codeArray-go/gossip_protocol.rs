@@ -1,5 +1,4 @@
 use std::{collections::HashSet, net::SocketAddr};
-
 use uint::construct_uint;
 
 pub mod byte_converter;
@@ -13,7 +12,7 @@ construct_uint!(
 #[derive(Debug, Clone)]
 pub enum Message {
     Chat(String),
-    TypeAck,
-    ReRequest,
+    TypeAck(U256),
+    ReRequest(U256),
     SharedPeers(HashSet<SocketAddr>),
 }

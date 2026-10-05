@@ -1,7 +1,7 @@
-use crate::{Message, U256};
+use crate::{Message, U256, hash::Hash};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    hash::Hash,
+    hash::Hash as StdHash,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
 
@@ -135,11 +135,13 @@ impl Serializer for Message {
                 buffer.push(b'C');
                 val.serialize(buffer);
             }
-            Message::TypeAck => {
+            Message::TypeAck(id) => {
                 buffer.push(b'A');
+                id.serialize(buffer);
             }
-            Message::ReRequest => {
+            Message::ReRequest(id) => {
                 buffer.push(b'R');
+                id.serialize(buffer);
             }
             Message::SharedPeers(peer) => {
                 buffer.push(b'S');
@@ -235,7 +237,7 @@ impl<'a> Deserializer<'a> for U256 {
 
 impl<'a, K, V> Deserializer<'a> for HashMap<K, V>
 where
-    K: Deserializer<'a> + Eq + Hash,
+    K: Deserializer<'a> + Eq + StdHash,
     V: Deserializer<'a>,
 {
     fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
@@ -341,7 +343,7 @@ where
 
 impl<'a, T> Deserializer<'a> for HashSet<T>
 where
-    T: Deserializer<'a> + Eq + Hash,
+    T: Deserializer<'a> + Eq + StdHash,
 {
     fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
         let len = u32::deserialze(buffer)? as usize;
@@ -372,8 +374,8 @@ impl<'a> Deserializer<'a> for Message {
 
         match tag {
             b'C' => Ok(Message::Chat(String::deserialze(buffer)?)),
-            b'A' => Ok(Message::TypeAck),
-            b'R' => Ok(Message::ReRequest),
+            b'A' => Ok(Message::TypeAck(U256::deserialze(buffer)?)),
+            b'R' => Ok(Message::ReRequest(U256::deserialze(buffer)?)),
             b'S' => Ok(Message::SharedPeers(HashSet::deserialze(buffer)?)),
             _ => Err("Failed to fetch Message due to invalid data"),
         }
