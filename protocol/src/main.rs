@@ -145,20 +145,21 @@ fn main() {
                             Ok(message) => {
                                 node.msg_seen.insert(format!("{:?}", msg.id));
 
+                                // TODO: Insert a MsgType checker
                                 match message {
                                     Message::Chat(msg) => {
                                         println!(" [{:?}]:- message is: {:?}", src, msg);
                                     }
-                                    Message::SharedPeers(peers) => {
+                                    Message::Peers(peers) => {
                                         // SAVED PEER LIST TO FILE
                                         let file_path = "addr.peer.bin";
                                         save_to_file(file_path, &peers)
                                             .expect("Failed to save to file");
                                     }
-                                    Message::ReRequest(_id) => {
+                                    Message::Re(_id) => {
                                         // TODO:- send chunk again of index re-request came
                                     }
-                                    Message::TypeAck(_id) => {
+                                    Message::Ack(_id) => {
                                         // TODO:- After aknowledgment from receiver remove chunks of index from ChunkSended
                                     }
                                 }
@@ -220,10 +221,11 @@ fn main() {
             let send_to_peers: Vec<SocketAddr> = peers.into_iter().take(10).collect();
 
             let msg = Message::Chat(text);
+            let msg_type = p2p_lib::MsgType::Chat;
 
             // TODO:- Handle error correctly as with error there will be ip of those whome failed to send chunks
             let msg_id = sender_cache
-                .send_in_chunks(msg, send_to_peers, &socket)
+                .send_in_chunks(msg_type, msg, send_to_peers, &socket)
                 .expect("Failed to send");
 
             let mut node = state.lock().unwrap();

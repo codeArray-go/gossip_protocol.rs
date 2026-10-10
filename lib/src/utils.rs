@@ -1,7 +1,7 @@
 use crate::{
-    Message, U256,
+    Combined, Message, MsgType, U256,
     byte_converter::{Deserializer, Serializer},
-    hash::Hash,
+    hash::{Hash, merkle_root},
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -12,6 +12,7 @@ use std::{
 
 pub struct Chunk<'a> {
     pub id: U256,
+    pub msg_type: MsgType,
     pub msg: &'a [u8],
     pub index: u16,
     pub total_chunks: u16,
@@ -24,6 +25,7 @@ pub struct ChunkSended(HashMap<U256, BTreeMap<u16, Vec<u8>>>);
 impl<'a> Serializer for Chunk<'a> {
     fn serialize(&self, buffer: &mut Vec<u8>) {
         self.id.serialize(buffer);
+        self.msg_type.serialize(buffer);
         self.msg.serialize(buffer);
         self.index.serialize(buffer);
         self.total_chunks.serialize(buffer);
@@ -38,20 +40,24 @@ impl<'a> Deserializer<'a> for Chunk<'a> {
             return Err("Buffer is too small for a valid message chunk");
         }
 
-        // 1. Message ID / Hash (32 bytes)
+        // Message ID / Hash (32 bytes)
         let id = U256::deserialze(buffer)?;
 
-        // 2. Message Payload
+        // Msg_type
+        let msg_type = MsgType::deserialze(buffer)?;
+
+        // Message Payload
         let msg = <&[u8] as Deserializer>::deserialze(buffer)?;
 
-        // 3. Chunk Index (2 bytes)
+        // Chunk Index (2 bytes)
         let index = u16::deserialze(buffer)?;
 
-        // 4. Total Chunks count (2 bytes)
+        // Total Chunks count (2 bytes)
         let total_chunks = u16::deserialze(buffer)?;
 
         Ok(Chunk {
             id,
+            msg_type,
             msg,
             index,
             total_chunks,
@@ -63,13 +69,14 @@ impl<'a> Deserializer<'a> for Chunk<'a> {
 impl<'a> ChunkSended {
     pub fn send_in_chunks(
         &mut self,
+        msg_type: MsgType,
         msg: Message,
         peers: Vec<SocketAddr>,
         socket: &UdpSocket,
     ) -> Result<Hash, Vec<SocketAddr>> {
         const MAX_SAFE_PAYLOAD: usize = 1400;
 
-        let msg_id = Hash::of(&msg);
+        let msg_id = merkle_root(&[Combined::Msg(&msg), Combined::Kind(&msg_type)]);
 
         let mut msg_byte = Vec::new();
         Message::serialize(&msg, &mut msg_byte);
@@ -87,6 +94,7 @@ impl<'a> ChunkSended {
             for (index, chunk_slice) in chunk_batch {
                 let chunk = Chunk {
                     id: msg_id.0,
+                    msg_type,
                     msg: chunk_slice,
                     index: *index as u16,
                     total_chunks: total_chunk,

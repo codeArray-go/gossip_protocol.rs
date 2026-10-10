@@ -1,4 +1,4 @@
-use p2p_lib::{Message, hash::Hash, utils::ChunkSended};
+use p2p_lib::{Message, MsgType, utils::ChunkSended};
 use std::{
     collections::HashSet,
     net::{SocketAddr, UdpSocket},
@@ -67,13 +67,12 @@ fn main() {
             }
         };
 
-        let msg_id = Hash::of(&new_list);
-        let msg = Message::SharedPeers(new_list);
+        let msg = Message::Peers(new_list);
 
         let peer_quantity = send_to_peers.len() as usize;
 
-        match sender_cache.send_in_chunks(msg, msg_id, send_to_peers, &socket) {
-            Ok(()) => {
+        match sender_cache.send_in_chunks(MsgType::Peers, msg, send_to_peers, &socket) {
+            Ok(_ip) => {
                 // Removed those ip whome list is sended successfully
                 let mut list = node_list.lock().unwrap();
                 let curr_list_len = list.tracker.len() as usize;
