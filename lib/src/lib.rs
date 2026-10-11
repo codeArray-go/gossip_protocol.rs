@@ -1,4 +1,3 @@
-use std::{collections::HashSet, net::SocketAddr};
 use uint::construct_uint;
 
 pub mod byte_converter;
@@ -9,7 +8,7 @@ construct_uint!(
     pub struct U256(4);
 );
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
 #[repr(u8)]
 pub enum MsgType {
     Chat = b'C',
@@ -18,16 +17,16 @@ pub enum MsgType {
     Peers = b'P',
 }
 
-#[derive(Debug, Clone)]
-pub enum Message {
-    Chat(String),
-    Ack(U256),
-    Re(U256),
-    Peers(HashSet<SocketAddr>),
-}
+// #[derive(Debug, Clone)]
+// pub enum Message {
+//     Chat(String),
+//     Ack(U256),
+//     Re(U256),
+//     Peers(HashSet<SocketAddr>),
+// }
 
 #[derive(Clone)]
 pub enum Combined<'a> {
-    Msg(&'a Message),
+    Msg(&'a [u8]),
     Kind(&'a MsgType),
 }

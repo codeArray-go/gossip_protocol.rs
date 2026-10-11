@@ -1,4 +1,4 @@
-use crate::{Combined, Message, MsgType, U256};
+use crate::{Combined, MsgType, U256};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     hash::Hash as StdHash,
@@ -135,28 +135,28 @@ impl Serializer for MsgType {
     }
 }
 
-impl Serializer for Message {
-    fn serialize(&self, buffer: &mut Vec<u8>) {
-        match self {
-            Message::Chat(val) => {
-                MsgType::Chat.serialize(buffer);
-                val.serialize(buffer);
-            }
-            Message::Ack(id) => {
-                MsgType::Ack.serialize(buffer);
-                id.serialize(buffer);
-            }
-            Message::Re(id) => {
-                MsgType::Re.serialize(buffer);
-                id.serialize(buffer);
-            }
-            Message::Peers(peer) => {
-                MsgType::Peers.serialize(buffer);
-                peer.serialize(buffer);
-            }
-        }
-    }
-}
+// impl Serializer for Message {
+//     fn serialize(&self, buffer: &mut Vec<u8>) {
+//         match self {
+//             Message::Chat(val) => {
+//                 MsgType::Chat.serialize(buffer);
+//                 val.serialize(buffer);
+//             }
+//             Message::Ack(id) => {
+//                 MsgType::Ack.serialize(buffer);
+//                 id.serialize(buffer);
+//             }
+//             Message::Re(id) => {
+//                 MsgType::Re.serialize(buffer);
+//                 id.serialize(buffer);
+//             }
+//             Message::Peers(peer) => {
+//                 MsgType::Peers.serialize(buffer);
+//                 peer.serialize(buffer);
+//             }
+//         }
+//     }
+// }
 
 impl<'a> Serializer for Combined<'a> {
     fn serialize(&self, buffer: &mut Vec<u8>) {
@@ -393,22 +393,22 @@ where
     }
 }
 
-impl<'a> Deserializer<'a> for Message {
-    fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
-        if buffer.is_empty() {
-            return Err("Empty buffer");
-        }
-
-        let tag = MsgType::deserialze(buffer).expect("Failed to extract message type");
-
-        match tag {
-            MsgType::Chat => Ok(Message::Chat(String::deserialze(buffer)?)),
-            MsgType::Ack => Ok(Message::Ack(U256::deserialze(buffer)?)),
-            MsgType::Re => Ok(Message::Re(U256::deserialze(buffer)?)),
-            MsgType::Peers => Ok(Message::Peers(HashSet::deserialze(buffer)?)),
-        }
-    }
-}
+// impl<'a> Deserializer<'a> for Message {
+//     fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {
+//         if buffer.is_empty() {
+//             return Err("Empty buffer");
+//         }
+//
+//         let tag = MsgType::deserialze(buffer).expect("Failed to extract message type");
+//
+//         match tag {
+//             MsgType::Chat => Ok(Message::Chat(String::deserialze(buffer)?)),
+//             MsgType::Ack => Ok(Message::Ack(U256::deserialze(buffer)?)),
+//             MsgType::Re => Ok(Message::Re(U256::deserialze(buffer)?)),
+//             MsgType::Peers => Ok(Message::Peers(HashSet::deserialze(buffer)?)),
+//         }
+//     }
+// }
 
 impl<'a> Deserializer<'a> for MsgType {
     fn deserialze(buffer: &mut &'a [u8]) -> Result<Self, &'static str> {

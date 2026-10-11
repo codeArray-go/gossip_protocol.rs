@@ -1,5 +1,5 @@
 use crate::{
-    Combined, Message, MsgType, U256,
+    Combined, MsgType, U256,
     byte_converter::{Deserializer, Serializer},
     hash::{Hash, merkle_root},
 };
@@ -70,19 +70,15 @@ impl<'a> ChunkSended {
     pub fn send_in_chunks(
         &mut self,
         msg_type: MsgType,
-        msg: Message,
+        msg: &[u8],
         peers: Vec<SocketAddr>,
         socket: &UdpSocket,
     ) -> Result<Hash, Vec<SocketAddr>> {
         const MAX_SAFE_PAYLOAD: usize = 1400;
 
-        let msg_id = merkle_root(&[Combined::Msg(&msg), Combined::Kind(&msg_type)]);
+        let msg_id = merkle_root(&[Combined::Msg(msg), Combined::Kind(&msg_type)]);
 
-        let mut msg_byte = Vec::new();
-        Message::serialize(&msg, &mut msg_byte);
-
-        let all_packet: Vec<(usize, &[u8])> =
-            msg_byte.chunks(MAX_SAFE_PAYLOAD).enumerate().collect();
+        let all_packet: Vec<(usize, &[u8])> = msg.chunks(MAX_SAFE_PAYLOAD).enumerate().collect();
 
         let total_chunk = all_packet.len() as u16;
 

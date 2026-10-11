@@ -1,6 +1,6 @@
 use net2::UdpSocketExt;
 use p2p_lib::{
-    Message, U256,
+    MsgType, U256,
     byte_converter::Deserializer,
     utils::{Chunk, ChunkSended},
 };
@@ -29,7 +29,7 @@ struct MessageState {
 
 #[derive(Default)]
 struct ChunkVec {
-    recv_msg_vec: HashMap<U256, BTreeMap<u16, Vec<u8>>>,
+    recv_msg_vec: HashMap<U256, HashMap<MsgType, BTreeMap<u16, Vec<u8>>>>,
 }
 
 fn main() {
@@ -104,22 +104,18 @@ fn main() {
                     let curr_idx = msg.index as u16;
 
                     // Inserting value to MessageState and Cloning them for further use
-                    let (stored_total, _stored_idx, stored_recv_id) = {
+                    let stored_total = {
                         let mut msg_state = msg_state_clone.lock().unwrap();
 
-                        if msg_state.total_chunk == 0 || msg_state.total_chunk < crr_total_chunks {
+                        if msg_state.total_chunk == 0 || msg_state.index < crr_total_chunks {
                             msg_state.index = msg.index;
                             msg_state.total_chunk = crr_total_chunks;
                             msg_state.recv_id = Some(msg.id.clone());
                         }
-                        (
-                            msg_state.total_chunk,
-                            msg_state.index,
-                            msg_state.recv_id.clone(),
-                        )
+                        msg_state.total_chunk
                     };
 
-                    if !(curr_idx < stored_total) && !(msg.id == stored_recv_id.unwrap()) {
+                    if !(curr_idx < stored_total) {
                         println!("Wrong chunk for wrong message id recieved.");
                         return;
                     }
@@ -130,6 +126,8 @@ fn main() {
                         .recv_msg_vec
                         .entry(msg.id.clone())
                         .or_default()
+                        .entry(msg.msg_type.clone())
+                        .or_default()
                         .insert(curr_idx, msg.msg.to_vec());
 
                     // TODO: 1.Requesting for missing chunks
@@ -139,34 +137,32 @@ fn main() {
                     if let Some(chunks) = chunk_vec.recv_msg_vec.get(&msg.id)
                         && (chunks.len() as u16) == stored_total
                     {
-                        let combined_byte: Vec<u8> = chunks.values().flatten().copied().collect();
+                        let header = chunks.keys().next().unwrap();
+                        let combined_byte: Vec<u8> = chunks
+                            .get(header)
+                            .unwrap()
+                            .values()
+                            .flatten()
+                            .copied()
+                            .collect();
                         let mut combo_byte_as_u8 = combined_byte.as_slice();
-                        match Message::deserialze(&mut combo_byte_as_u8) {
-                            Ok(message) => {
-                                node.msg_seen.insert(format!("{:?}", msg.id));
-
-                                // TODO: Insert a MsgType checker
-                                match message {
-                                    Message::Chat(msg) => {
-                                        println!(" [{:?}]:- message is: {:?}", src, msg);
-                                    }
-                                    Message::Peers(peers) => {
-                                        // SAVED PEER LIST TO FILE
-                                        let file_path = "addr.peer.bin";
-                                        save_to_file(file_path, &peers)
-                                            .expect("Failed to save to file");
-                                    }
-                                    Message::Re(_id) => {
-                                        // TODO:- send chunk again of index re-request came
-                                    }
-                                    Message::Ack(_id) => {
-                                        // TODO:- After aknowledgment from receiver remove chunks of index from ChunkSended
-                                    }
-                                }
+                        match header {
+                            MsgType::Chat => {
+                                let message = String::deserialze(&mut combo_byte_as_u8);
+                                println!(" [{:?}]:- message is: {:?}", src, message);
                             }
-                            Err(e) => {
-                                println!("Error: Bytes are not valid: {}", e);
-                                chunk_vec.recv_msg_vec.remove(&msg.id);
+                            MsgType::Ack => {
+                                // TODO:- After aknowledgment from receiver remove chunks of index from ChunkSended
+                            }
+                            MsgType::Re => {
+                                // TODO:- send chunk again of index re-request came
+                            }
+                            MsgType::Peers => {
+                                // SAVED PEER LIST TO FILE
+                                let peers: HashSet<SocketAddr> =
+                                    HashSet::deserialze(&mut combo_byte_as_u8).unwrap();
+                                let file_path = "addr.peer.bin";
+                                save_to_file(file_path, &peers).expect("Failed to save to file");
                             }
                         }
                     } else {
@@ -220,12 +216,12 @@ fn main() {
 
             let send_to_peers: Vec<SocketAddr> = peers.into_iter().take(10).collect();
 
-            let msg = Message::Chat(text);
+            let msg_byte = text.as_bytes();
             let msg_type = p2p_lib::MsgType::Chat;
 
             // TODO:- Handle error correctly as with error there will be ip of those whome failed to send chunks
             let msg_id = sender_cache
-                .send_in_chunks(msg_type, msg, send_to_peers, &socket)
+                .send_in_chunks(msg_type, msg_byte, send_to_peers, &socket)
                 .expect("Failed to send");
 
             let mut node = state.lock().unwrap();
