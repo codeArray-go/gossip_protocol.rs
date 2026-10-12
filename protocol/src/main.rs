@@ -145,24 +145,48 @@ fn main() {
                             .flatten()
                             .copied()
                             .collect();
-                        let mut combo_byte_as_u8 = combined_byte.as_slice();
                         match header {
                             MsgType::Chat => {
+                                // TODO:- put a check for checking if any chunk is missing
+                                let mut combo_byte_as_u8 = combined_byte.as_slice();
                                 let message = String::deserialze(&mut combo_byte_as_u8);
                                 println!(" [{:?}]:- message is: {:?}", src, message);
+                                // TODO:- If any chunk got missed send request for it to back
                             }
                             MsgType::Ack => {
-                                // TODO:- After aknowledgment from receiver remove chunks of index from ChunkSended
+                                for byte in combined_byte {
+                                    // Removing acknowledgmented chunks
+                                    let id = U256::deserialze(&mut [byte].as_slice()).unwrap();
+                                    chunk_vec.recv_msg_vec.remove_entry(&id);
+                                }
                             }
                             MsgType::Re => {
-                                // TODO:- send chunk again of index re-request came
+                                // TODO:- send chunk again of index re-request came remove it from re-request
+                                for byte in combined_byte {
+                                    let id = U256::deserialze(&mut [byte].as_slice()).unwrap();
+                                    if let Some(chunk) = chunk_vec.recv_msg_vec.get(&id) {
+                                        if !chunk.contains_key(&MsgType::Re) {
+                                            eprint!(
+                                                "Failed to get re-send request from stored values"
+                                            )
+                                        }
+                                        if let Some((_msg_type, tree)) = chunk.iter().next() {
+                                            if let Some(index) = tree.keys().next() {
+                                                if index == &msg.index {}
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             MsgType::Peers => {
                                 // SAVED PEER LIST TO FILE
+                                let mut combo_byte_as_u8 = combined_byte.as_slice();
                                 let peers: HashSet<SocketAddr> =
                                     HashSet::deserialze(&mut combo_byte_as_u8).unwrap();
                                 let file_path = "addr.peer.bin";
                                 save_to_file(file_path, &peers).expect("Failed to save to file");
+
+                                // TODO:- If any chunk got missed send request for it to back
                             }
                         }
                     } else {
