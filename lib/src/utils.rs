@@ -71,6 +71,7 @@ impl<'a> ChunkSended {
         &mut self,
         msg_type: MsgType,
         msg: &[u8],
+        index: Option<u16>,
         peers: Vec<SocketAddr>,
         socket: &UdpSocket,
     ) -> Result<Hash, Vec<SocketAddr>> {
@@ -87,12 +88,13 @@ impl<'a> ChunkSended {
         for chunk_batch in all_packet.chunks(25) {
             let mut batch = Vec::with_capacity(chunk_batch.len());
 
-            for (index, chunk_slice) in chunk_batch {
+            for (idx, chunk_slice) in chunk_batch {
+                let curr_index = index.unwrap_or(*idx as u16);
                 let chunk = Chunk {
                     id: msg_id.0,
                     msg_type,
                     msg: chunk_slice,
-                    index: *index as u16,
+                    index: curr_index,
                     total_chunks: total_chunk,
                 };
 
@@ -106,7 +108,7 @@ impl<'a> ChunkSended {
                 self.0
                     .entry(msg_id.0.clone())
                     .or_default()
-                    .insert(*index as u16, buffer.clone());
+                    .insert(curr_index, buffer.clone());
 
                 batch.push(buffer);
             }
