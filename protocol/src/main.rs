@@ -1,7 +1,7 @@
 use net2::UdpSocketExt;
 use p2p_lib::{
     MsgType, U256,
-    byte_converter::Deserializer,
+    byte_converter::{Deserializer, Serializer},
     utils::{Chunk, ChunkSended},
 };
 use std::{
@@ -104,7 +104,7 @@ fn main() {
                     let curr_idx = msg.index as u16;
 
                     // Inserting value to MessageState and Cloning them for further use
-                    let stored_total = {
+                    let (stored_total, shared_idx, stored_id) = {
                         let mut msg_state = msg_state_clone.lock().unwrap();
 
                         if msg_state.total_chunk == 0 || msg_state.index < crr_total_chunks {
@@ -112,8 +112,15 @@ fn main() {
                             msg_state.total_chunk = crr_total_chunks;
                             msg_state.recv_id = Some(msg.id.clone());
                         }
-                        msg_state.total_chunk
+
+                        (
+                            msg_state.total_chunk,
+                            msg_state.index,
+                            msg_state.recv_id.unwrap(),
+                        )
                     };
+
+                    // TODO:- Acknowledgment of currnet index of chunk recieved
 
                     if !(curr_idx < stored_total) {
                         println!("Wrong chunk for wrong message id recieved.");
@@ -193,6 +200,8 @@ fn main() {
                         println!("Error in converting chunk to message");
                         return;
                     }
+                } else {
+                    eprint!("Failed to retriever message from bytes, means byte gor missed.");
                 }
             }
         }
@@ -245,7 +254,7 @@ fn main() {
 
             // TODO:- Handle error correctly as with error there will be ip of those whome failed to send chunks
             let msg_id = sender_cache
-                .send_in_chunks(msg_type, msg_byte, send_to_peers, &socket)
+                .send_in_chunks(msg_type, msg_byte, None, send_to_peers, &socket)
                 .expect("Failed to send");
 
             let mut node = state.lock().unwrap();
