@@ -120,7 +120,20 @@ fn main() {
                         )
                     };
 
-                    // TODO:- Acknowledgment of currnet index of chunk recieved
+                    // Acknowledgment of currnet index of chunk recieved
+                    let msg_type = MsgType::Ack;
+                    let mut id_buffer = vec![];
+                    stored_id.serialize(&mut id_buffer);
+                    let peers = vec![src];
+
+                    let mut sended_chunk = ChunkSended::default();
+                    let _to_sended_peer_id = sended_chunk.send_in_chunks(
+                        msg_type,
+                        &id_buffer,
+                        Some(shared_idx),
+                        peers,
+                        &socket_clone,
+                    );
 
                     if !(curr_idx < stored_total) {
                         println!("Wrong chunk for wrong message id recieved.");
