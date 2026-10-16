@@ -20,7 +20,7 @@ pub struct Chunk<'a> {
 
 // CHUNK TRACKER
 #[derive(Default)]
-pub struct ChunkSended(HashMap<U256, BTreeMap<u16, Vec<u8>>>);
+pub struct ChunkSended(pub HashMap<U256, BTreeMap<u16, Vec<u8>>>);
 
 impl<'a> Serializer for Chunk<'a> {
     fn serialize(&self, buffer: &mut Vec<u8>) {
@@ -71,13 +71,14 @@ impl<'a> ChunkSended {
         &mut self,
         msg_type: MsgType,
         msg: &[u8],
+        id: Option<U256>,
         index: Option<u16>,
         peers: Vec<SocketAddr>,
         socket: &UdpSocket,
-    ) -> Result<Hash, Vec<SocketAddr>> {
+    ) -> Result<U256, Vec<SocketAddr>> {
         const MAX_SAFE_PAYLOAD: usize = 1400;
 
-        let msg_id = merkle_root(&[Combined::Msg(msg), Combined::Kind(&msg_type)]);
+        let msg_id = id.unwrap_or(merkle_root(&[Combined::Msg(msg), Combined::Kind(&msg_type)]).0);
 
         let all_packet: Vec<(usize, &[u8])> = msg.chunks(MAX_SAFE_PAYLOAD).enumerate().collect();
 
@@ -91,7 +92,7 @@ impl<'a> ChunkSended {
             for (idx, chunk_slice) in chunk_batch {
                 let curr_index = index.unwrap_or(*idx as u16);
                 let chunk = Chunk {
-                    id: msg_id.0,
+                    id: msg_id,
                     msg_type,
                     msg: chunk_slice,
                     index: curr_index,
@@ -106,7 +107,7 @@ impl<'a> ChunkSended {
                 // TODO: after converting to bytes encrypt it
 
                 self.0
-                    .entry(msg_id.0.clone())
+                    .entry(msg_id.clone())
                     .or_default()
                     .insert(curr_index, buffer.clone());
 

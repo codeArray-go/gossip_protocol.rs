@@ -85,6 +85,9 @@ fn main() {
 
     let state_clone = Arc::clone(&state);
 
+    let sender_cache = Arc::new(Mutex::new(ChunkSended(HashMap::new())));
+    let sender_chache_clone = Arc::clone(&sender_cache);
+
     // LISTNER
     thread::spawn(move || {
         let mut buff = [0u8; 65_535];
@@ -130,6 +133,7 @@ fn main() {
                     let _to_sended_peer_id = sended_chunk.send_in_chunks(
                         msg_type,
                         &id_buffer,
+                        None,
                         Some(shared_idx),
                         peers,
                         &socket_clone,
@@ -181,22 +185,7 @@ fn main() {
                                 }
                             }
                             MsgType::Re => {
-                                // TODO:- send chunk again of index re-request came remove it from re-request
-                                for byte in combined_byte {
-                                    let id = U256::deserialze(&mut [byte].as_slice()).unwrap();
-                                    if let Some(chunk) = chunk_vec.recv_msg_vec.get(&id) {
-                                        if !chunk.contains_key(&MsgType::Re) {
-                                            eprint!(
-                                                "Failed to get re-send request from stored values"
-                                            )
-                                        }
-                                        if let Some((_msg_type, tree)) = chunk.iter().next() {
-                                            if let Some(index) = tree.keys().next() {
-                                                if index == &msg.index {}
-                                            }
-                                        }
-                                    }
-                                }
+                                // TODO:- send chunk again of index re-request came remove it from cache
                             }
                             MsgType::Peers => {
                                 // SAVED PEER LIST TO FILE
@@ -222,7 +211,6 @@ fn main() {
 
     let stdin = std::io::stdin();
     let mut input = String::new();
-    let mut sender_cache = ChunkSended::default();
 
     // --- MESSAGE SENDER ---
     loop {
@@ -264,10 +252,11 @@ fn main() {
 
             let msg_byte = text.as_bytes();
             let msg_type = p2p_lib::MsgType::Chat;
+            let mut cache = sender_cache.lock().unwrap();
 
             // TODO:- Handle error correctly as with error there will be ip of those whome failed to send chunks
-            let msg_id = sender_cache
-                .send_in_chunks(msg_type, msg_byte, None, send_to_peers, &socket)
+            let msg_id = cache
+                .send_in_chunks(msg_type, msg_byte, None, None, send_to_peers, &socket)
                 .expect("Failed to send");
 
             let mut node = state.lock().unwrap();

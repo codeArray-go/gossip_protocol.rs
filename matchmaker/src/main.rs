@@ -72,7 +72,14 @@ fn main() {
 
         let peer_quantity = send_to_peers.len() as usize;
 
-        match sender_cache.send_in_chunks(MsgType::Peers, &buffer, send_to_peers, &socket) {
+        match sender_cache.send_in_chunks(
+            MsgType::Peers,
+            &buffer,
+            None,
+            None,
+            send_to_peers,
+            &socket,
+        ) {
             Ok(_ip) => {
                 // Removed those ip whome list is sended successfully
                 let mut list = node_list.lock().unwrap();
