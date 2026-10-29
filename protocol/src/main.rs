@@ -162,7 +162,7 @@ fn main() {
                         && (chunks.len() as u16) == stored_total
                     {
                         let header = chunks.keys().next().unwrap();
-                        let combined_byte: Vec<u8> = chunks
+                        let all_bytes: Vec<u8> = chunks
                             .get(header)
                             .unwrap()
                             .values()
@@ -172,26 +172,55 @@ fn main() {
                         match header {
                             MsgType::Chat => {
                                 // TODO:- put a check for checking if any chunk is missing
-                                let mut combo_byte_as_u8 = combined_byte.as_slice();
-                                let message = String::deserialze(&mut combo_byte_as_u8);
+                                let mut combined_bytes = all_bytes.as_slice();
+                                let message = String::deserialze(&mut combined_bytes);
                                 println!(" [{:?}]:- message is: {:?}", src, message);
                                 // TODO:- If any chunk got missed send request for it to back
                             }
                             MsgType::Ack => {
-                                for byte in combined_byte {
+                                for byte in all_bytes {
                                     // Removing acknowledgmented chunks
-                                    let id = U256::deserialze(&mut [byte].as_slice()).unwrap();
-                                    chunk_vec.recv_msg_vec.remove_entry(&id);
+                                    let _id = U256::deserialze(&mut [byte].as_slice()).unwrap();
+                                    let _add = SocketAddr::deserialze(&mut [byte].as_slice());
+                                    // Check if all 5 peers have sended ack then remove it from chunk_vec
+                                    // chunk_vec.recv_msg_vec.remove_entry(&id);
                                 }
                             }
                             MsgType::Re => {
                                 // TODO:- send chunk again of index re-request came remove it from cache
+                                let mut _message_id: U256;
+                                let mut _peer: Vec<SocketAddr> = Vec::new();
+
+                                for byte in all_bytes {
+                                    let msg_id = U256::deserialze(&mut [byte].as_slice()).unwrap();
+                                    let add =
+                                        SocketAddr::deserialze(&mut [byte].as_slice()).unwrap();
+
+                                    let (msg, msg_idx) = {
+                                        let cache = sender_chache_clone.lock().unwrap();
+                                        let data = cache.0.get(&msg_id).unwrap();
+                                        let msg_idx = data.chunks.keys().next().unwrap().clone();
+                                        let msg = data.chunks.get(&msg_idx).unwrap().clone();
+
+                                        (msg, msg_idx)
+                                    };
+
+                                    let mut cache = sender_chache_clone.lock().unwrap();
+                                    let _sended_id = cache.send_in_chunks(
+                                        MsgType::Chat,
+                                        &msg,
+                                        Some(msg_id),
+                                        Some(msg_idx),
+                                        vec![add],
+                                        &socket_clone,
+                                    );
+                                }
                             }
                             MsgType::Peers => {
                                 // SAVED PEER LIST TO FILE
-                                let mut combo_byte_as_u8 = combined_byte.as_slice();
+                                let mut combined_bytes = all_bytes.as_slice();
                                 let peers: HashSet<SocketAddr> =
-                                    HashSet::deserialze(&mut combo_byte_as_u8).unwrap();
+                                    HashSet::deserialze(&mut combined_bytes).unwrap();
                                 let file_path = "addr.peer.bin";
                                 save_to_file(file_path, &peers).expect("Failed to save to file");
 

@@ -1,7 +1,7 @@
 use crate::{
     Combined, MsgType, U256,
     byte_converter::{Deserializer, Serializer},
-    hash::{Hash, merkle_root},
+    hash::merkle_root,
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -18,9 +18,14 @@ pub struct Chunk<'a> {
     pub total_chunks: u16,
 }
 
+pub struct SendedData {
+    pub peers: Vec<SocketAddr>,
+    pub chunks: BTreeMap<u16, Vec<u8>>,
+}
+
 // CHUNK TRACKER
 #[derive(Default)]
-pub struct ChunkSended(pub HashMap<U256, BTreeMap<u16, Vec<u8>>>);
+pub struct ChunkSended(pub HashMap<U256, SendedData>);
 
 impl<'a> Serializer for Chunk<'a> {
     fn serialize(&self, buffer: &mut Vec<u8>) {
@@ -106,10 +111,16 @@ impl<'a> ChunkSended {
 
                 // TODO: after converting to bytes encrypt it
 
+                // SAVING TO ChunkSended
                 self.0
                     .entry(msg_id.clone())
-                    .or_default()
-                    .insert(curr_index, buffer.clone());
+                    .and_modify(|msg_data| {
+                        msg_data.chunks.insert(curr_index, buffer.clone());
+                    })
+                    .or_insert_with(|| SendedData {
+                        peers: Vec::new(),
+                        chunks: BTreeMap::new(),
+                    });
 
                 batch.push(buffer);
             }
@@ -123,7 +134,7 @@ impl<'a> ChunkSended {
                             return true;
                         }
                         Err(e) => {
-                            // Checking if OS buffer filled completely
+                            // CHECKING IF OS BUFFER FILLED COMPLETELY
                             if e.kind() == ErrorKind::WouldBlock
                                 || e.kind() == ErrorKind::Interrupted
                             {
@@ -141,6 +152,11 @@ impl<'a> ChunkSended {
                         break;
                     }
                 }
+
+                // SAVING PEERS TO ChunkSended
+                self.0.entry(msg_id).and_modify(|data| {
+                    data.peers = active_peers;
+                });
             }
         }
 
