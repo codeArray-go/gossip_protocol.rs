@@ -81,7 +81,7 @@ impl<'a> ChunkSended {
         peers: Vec<SocketAddr>,
         socket: &UdpSocket,
     ) -> Result<U256, Vec<SocketAddr>> {
-        const MAX_SAFE_PAYLOAD: usize = 1400;
+        const MAX_SAFE_PAYLOAD: usize = 1200;
 
         let msg_id = id.unwrap_or(merkle_root(&[Combined::Msg(msg), Combined::Kind(&msg_type)]).0);
 

@@ -61,10 +61,17 @@ fn main() {
     let add = format!("0.0.0.0:{port}");
     println!("Running currenlty on: {:?}", &add);
     let socket = UdpSocket::bind(add).expect("Give a correct port.");
-    // Increased buffer size at OS level till 2mb
+
+    // INCREASE MEMORY BUFFER SIZE TO 2MB
+    let new_size = 1024 * 1024 * 2;
     socket
-        .set_send_buffer_size(1024 * 1024 * 2)
-        .expect("Failed to set buffer size");
+        .set_send_buffer_size(new_size)
+        .expect("Failed to set buffer size at sender end");
+
+    socket
+        .set_recv_buffer_size(new_size)
+        .expect("Failed to set buffer size at receving end");
+
     let socket_clone = socket.try_clone().expect("Error while cloning.");
 
     // FILLED node.peers IF FILE ALREADY EXISTS THERE ELSE CONNECT TO MATCHMAKER
