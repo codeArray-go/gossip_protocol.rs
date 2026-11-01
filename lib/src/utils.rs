@@ -21,6 +21,7 @@ pub struct Chunk<'a> {
 pub struct SendedData {
     pub peers: Vec<SocketAddr>,
     pub chunks: BTreeMap<u16, Vec<u8>>,
+    pub total: u16,
 }
 
 // CHUNK TRACKER
@@ -116,10 +117,12 @@ impl<'a> ChunkSended {
                     .entry(msg_id.clone())
                     .and_modify(|msg_data| {
                         msg_data.chunks.insert(curr_index, buffer.clone());
+                        msg_data.total = total_chunk;
                     })
                     .or_insert_with(|| SendedData {
                         peers: Vec::new(),
                         chunks: BTreeMap::new(),
+                        total: 0,
                     });
 
                 batch.push(buffer);
@@ -155,7 +158,7 @@ impl<'a> ChunkSended {
 
                 // SAVING PEERS TO ChunkSended
                 self.0.entry(msg_id).and_modify(|data| {
-                    data.peers = active_peers;
+                    data.peers = active_peers; // Correct this as if there will be re-request for only one peer it'll remove other peers 
                 });
             }
         }

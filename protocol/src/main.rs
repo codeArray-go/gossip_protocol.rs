@@ -13,7 +13,7 @@ use std::{
     thread, vec,
 };
 
-use crate::utils::{read_from_file, save_to_file};
+use crate::utils::read_from_file;
 
 pub mod utils;
 struct NodeState {
@@ -21,16 +21,13 @@ struct NodeState {
     msg_seen: HashSet<String>,
 }
 
-struct MessageState {
-    index: u16,
-    total_chunk: u16,
-    recv_id: Option<U256>,
+pub struct TypeBased {
+    ack: BTreeMap<u16, Vec<SocketAddr>>,
+    chat: BTreeMap<u16, Vec<u8>>,
 }
 
 #[derive(Default)]
-struct ChunkVec {
-    recv_msg_vec: HashMap<U256, HashMap<MsgType, BTreeMap<u16, Vec<u8>>>>,
-}
+pub struct ChunkVec(HashMap<U256, TypeBased>);
 
 fn main() {
     // -------------------------------------------------------------------------
@@ -78,22 +75,13 @@ fn main() {
 
     // -----------------------------------------
 
-    let chunk_vec = Arc::new(Mutex::new(ChunkVec {
-        recv_msg_vec: HashMap::new(),
-    }));
+    let chunk_vec = Arc::new(Mutex::new(ChunkVec(HashMap::new())));
     let chunk_vec_clone = Arc::clone(&chunk_vec);
-
-    let msg_state = Arc::new(Mutex::new(MessageState {
-        index: 0,
-        total_chunk: 0,
-        recv_id: None,
-    }));
-    let msg_state_clone = Arc::clone(&msg_state);
 
     let state_clone = Arc::clone(&state);
 
-    let sender_cache = Arc::new(Mutex::new(ChunkSended(HashMap::new())));
-    let sender_chache_clone = Arc::clone(&sender_cache);
+    let sended_data = Arc::new(Mutex::new(ChunkSended(HashMap::new())));
+    let sended_data_clone = Arc::clone(&sended_data);
 
     // LISTNER
     thread::spawn(move || {
@@ -110,30 +98,18 @@ fn main() {
                 }
 
                 if let Ok(msg) = Chunk::deserialze(&mut actual_byte) {
-                    let crr_total_chunks = msg.total_chunks as u16;
+                    let crr_total_chunks: u16 = msg.total_chunks;
                     let curr_idx = msg.index as u16;
 
-                    // Inserting value to MessageState and Cloning them for further use
-                    let (stored_total, shared_idx, stored_id) = {
-                        let mut msg_state = msg_state_clone.lock().unwrap();
+                    if !(curr_idx < crr_total_chunks) {
+                        println!("Wrong chunk for wrong message id recieved.");
+                        return;
+                    }
 
-                        if msg_state.total_chunk == 0 || msg_state.index < crr_total_chunks {
-                            msg_state.index = msg.index;
-                            msg_state.total_chunk = crr_total_chunks;
-                            msg_state.recv_id = Some(msg.id.clone());
-                        }
-
-                        (
-                            msg_state.total_chunk,
-                            msg_state.index,
-                            msg_state.recv_id.unwrap(),
-                        )
-                    };
-
-                    // Acknowledgment of currnet index of chunk recieved
+                    // ACKNOWLEDGMENT
                     let msg_type = MsgType::Ack;
                     let mut id_buffer = vec![];
-                    stored_id.serialize(&mut id_buffer);
+                    msg.id.serialize(&mut id_buffer);
                     let peers = vec![src];
 
                     let mut sended_chunk = ChunkSended::default();
@@ -141,105 +117,13 @@ fn main() {
                         msg_type,
                         &id_buffer,
                         None,
-                        Some(shared_idx),
+                        Some(crr_total_chunks),
                         peers,
                         &socket_clone,
                     );
+                    // ;
 
-                    if !(curr_idx < stored_total) {
-                        println!("Wrong chunk for wrong message id recieved.");
-                        return;
-                    }
-
-                    // Storing chunk vec to ChunkVec
-                    let mut chunk_vec = chunk_vec_clone.lock().unwrap();
-                    chunk_vec
-                        .recv_msg_vec
-                        .entry(msg.id.clone())
-                        .or_default()
-                        .entry(msg.msg_type.clone())
-                        .or_default()
-                        .insert(curr_idx, msg.msg.to_vec());
-
-                    // TODO: 1.Requesting for missing chunks
-                    //  2. Complete code of acknowledgment
-
-                    // Converting to real message
-                    if let Some(chunks) = chunk_vec.recv_msg_vec.get(&msg.id)
-                        && (chunks.len() as u16) == stored_total
-                    {
-                        let header = chunks.keys().next().unwrap();
-                        let all_bytes: Vec<u8> = chunks
-                            .get(header)
-                            .unwrap()
-                            .values()
-                            .flatten()
-                            .copied()
-                            .collect();
-                        match header {
-                            MsgType::Chat => {
-                                // TODO:- put a check for checking if any chunk is missing
-                                let mut combined_bytes = all_bytes.as_slice();
-                                let message = String::deserialze(&mut combined_bytes);
-                                println!(" [{:?}]:- message is: {:?}", src, message);
-                                // TODO:- If any chunk got missed send request for it to back
-                            }
-                            MsgType::Ack => {
-                                for byte in all_bytes {
-                                    // Removing acknowledgmented chunks
-                                    let _id = U256::deserialze(&mut [byte].as_slice()).unwrap();
-                                    let _add = SocketAddr::deserialze(&mut [byte].as_slice());
-                                    // Check if all 5 peers have sended ack then remove it from chunk_vec
-                                    // chunk_vec.recv_msg_vec.remove_entry(&id);
-                                }
-                            }
-                            MsgType::Re => {
-                                // TODO:- send chunk again of index re-request came remove it from cache
-                                let mut _message_id: U256;
-                                let mut _peer: Vec<SocketAddr> = Vec::new();
-
-                                for byte in all_bytes {
-                                    let msg_id = U256::deserialze(&mut [byte].as_slice()).unwrap();
-                                    let add =
-                                        SocketAddr::deserialze(&mut [byte].as_slice()).unwrap();
-
-                                    let (msg, msg_idx) = {
-                                        let cache = sender_chache_clone.lock().unwrap();
-                                        let data = cache.0.get(&msg_id).unwrap();
-                                        let msg_idx = data.chunks.keys().next().unwrap().clone();
-                                        let msg = data.chunks.get(&msg_idx).unwrap().clone();
-
-                                        (msg, msg_idx)
-                                    };
-
-                                    let mut cache = sender_chache_clone.lock().unwrap();
-                                    let _sended_id = cache.send_in_chunks(
-                                        MsgType::Chat,
-                                        &msg,
-                                        Some(msg_id),
-                                        Some(msg_idx),
-                                        vec![add],
-                                        &socket_clone,
-                                    );
-                                }
-                            }
-                            MsgType::Peers => {
-                                // SAVED PEER LIST TO FILE
-                                let mut combined_bytes = all_bytes.as_slice();
-                                let peers: HashSet<SocketAddr> =
-                                    HashSet::deserialze(&mut combined_bytes).unwrap();
-                                let file_path = "addr.peer.bin";
-                                save_to_file(file_path, &peers).expect("Failed to save to file");
-
-                                // TODO:- If any chunk got missed send request for it to back
-                            }
-                        }
-                    } else {
-                        println!("Error in converting chunk to message");
-                        return;
-                    }
-                } else {
-                    eprint!("Failed to retriever message from bytes, means byte gor missed.");
+                    // REPLY INSTANTLY IF IT'S RE OTHERWISE STORE VALUES
                 }
             }
         }
@@ -288,7 +172,8 @@ fn main() {
 
             let msg_byte = text.as_bytes();
             let msg_type = p2p_lib::MsgType::Chat;
-            let mut cache = sender_cache.lock().unwrap();
+
+            let mut cache = sended_data.lock().unwrap();
 
             // TODO:- Handle error correctly as with error there will be ip of those whome failed to send chunks
             let msg_id = cache
