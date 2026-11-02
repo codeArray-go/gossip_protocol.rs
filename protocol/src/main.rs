@@ -107,22 +107,22 @@ fn main() {
                     }
 
                     // ACKNOWLEDGMENT
+                    // Correct it
                     let msg_type = MsgType::Ack;
-                    let mut id_buffer = vec![];
-                    msg.id.serialize(&mut id_buffer);
-                    let peers = vec![src];
+                    let ack_text = "Done";
+                    let ack_text_byte = ack_text.as_bytes();
 
                     let mut sended_chunk = ChunkSended::default();
                     let _to_sended_peer_id = sended_chunk.send_in_chunks(
                         msg_type,
-                        &id_buffer,
-                        None,
-                        Some(crr_total_chunks),
-                        peers,
+                        &ack_text_byte,
+                        Some(msg.id),
+                        Some(msg.index),
+                        vec![src],
                         &socket_clone,
                     );
                     // ;
-
+                    
                     // REPLY INSTANTLY IF IT'S RE OTHERWISE STORE VALUES
                 }
             }

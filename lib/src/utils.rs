@@ -113,17 +113,20 @@ impl<'a> ChunkSended {
                 // TODO: after converting to bytes encrypt it
 
                 // SAVING TO ChunkSended
-                self.0
-                    .entry(msg_id.clone())
-                    .and_modify(|msg_data| {
-                        msg_data.chunks.insert(curr_index, buffer.clone());
-                        msg_data.total = total_chunk;
-                    })
-                    .or_insert_with(|| SendedData {
-                        peers: Vec::new(),
-                        chunks: BTreeMap::new(),
-                        total: 0,
-                    });
+
+                if msg_type == MsgType::Chat {
+                    self.0
+                        .entry(msg_id.clone())
+                        .and_modify(|msg_data| {
+                            msg_data.chunks.insert(curr_index, buffer.clone());
+                            msg_data.total = total_chunk;
+                        })
+                        .or_insert_with(|| SendedData {
+                            peers: Vec::new(),
+                            chunks: BTreeMap::new(),
+                            total: 0,
+                        });
+                }
 
                 batch.push(buffer);
             }
@@ -157,9 +160,11 @@ impl<'a> ChunkSended {
                 }
 
                 // SAVING PEERS TO ChunkSended
-                self.0.entry(msg_id).and_modify(|data| {
-                    data.peers = active_peers; // Correct this as if there will be re-request for only one peer it'll remove other peers 
-                });
+                if msg_type == MsgType::Chat {
+                    self.0.entry(msg_id).and_modify(|data| {
+                        data.peers = active_peers; // Correct this as if there will be re-request for only one peer it'll remove other peers 
+                    });
+                }
             }
         }
 
