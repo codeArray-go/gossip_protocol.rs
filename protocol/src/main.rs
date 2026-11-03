@@ -107,7 +107,6 @@ fn main() {
                     }
 
                     // ACKNOWLEDGMENT
-                    // Correct it
                     let msg_type = MsgType::Ack;
                     let ack_text = "Done";
                     let ack_text_byte = ack_text.as_bytes();
@@ -122,8 +121,86 @@ fn main() {
                         &socket_clone,
                     );
                     // ;
-                    
+
                     // REPLY INSTANTLY IF IT'S RE OTHERWISE STORE VALUES
+                    match msg.msg_type {
+                        MsgType::Chat => {
+                            let mut chunk_vec = chunk_vec_clone.lock().unwrap();
+                            chunk_vec
+                                .0
+                                .entry(msg.id)
+                                .and_modify(|data| {
+                                    data.chat
+                                        .entry(msg.index)
+                                        .and_modify(|val| {
+                                            val.extend_from_slice(msg.msg);
+                                        })
+                                        .or_insert_with(|| msg.msg.to_vec());
+                                })
+                                .or_insert_with(|| {
+                                    let mut new = BTreeMap::new();
+                                    new.insert(msg.index, msg.msg.to_vec());
+
+                                    TypeBased {
+                                        ack: BTreeMap::new(),
+                                        chat: new,
+                                    }
+                                });
+                        }
+                        MsgType::Ack => {
+                            let mut chunk_vec = chunk_vec_clone.lock().unwrap();
+                            chunk_vec
+                                .0
+                                .entry(msg.id)
+                                .and_modify(|data| {
+                                    data.ack
+                                        .entry(msg.index)
+                                        .and_modify(|val| {
+                                            val.push(src);
+                                        })
+                                        .or_insert_with(|| vec![src]);
+                                })
+                                .or_insert_with(|| {
+                                    let mut new = BTreeMap::new();
+                                    new.insert(msg.index, vec![src]);
+
+                                    TypeBased {
+                                        ack: new,
+                                        chat: BTreeMap::new(),
+                                    }
+                                });
+                        }
+                        MsgType::Re => {
+                            let mut sended_data = sended_data_clone.lock().unwrap();
+                            let chunk = sended_data
+                                .0
+                                .get(&msg.id)
+                                .unwrap()
+                                .chunks
+                                .get(&msg.index)
+                                .unwrap()
+                                .clone();
+
+                            let _id = sended_data.send_in_chunks(
+                                MsgType::Chat,
+                                &chunk,
+                                Some(msg.id),
+                                Some(msg.index),
+                                vec![src],
+                                &socket_clone,
+                            );
+                        }
+                        MsgType::Peers => {
+                            // SAVED PEER LIST TO FILE
+                            // let mut combined_bytes = all_bytes.as_slice();
+                            // let peers: HashSet<SocketAddr> =
+                            //     HashSet::deserialze(&mut combined_bytes).unwrap();
+                            // let file_path = "addr.peer.bin";
+                            // save_to_file(file_path, &peers).expect("Failed to save to file");
+
+                            // TODO:- If any chunk got missed send request for it to back
+                        }
+                    }
                 }
             }
         }
