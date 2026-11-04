@@ -5,7 +5,7 @@ use p2p_lib::{
     utils::{Chunk, ChunkSended},
 };
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     env,
     net::{SocketAddr, ToSocketAddrs, UdpSocket},
     path::Path,
@@ -14,20 +14,22 @@ use std::{
 };
 
 use crate::utils::read_from_file;
-
 pub mod utils;
+
 struct NodeState {
     peer: Vec<SocketAddr>,
     msg_seen: HashSet<String>,
 }
 
-pub struct TypeBased {
+struct TypeBased {
     ack: BTreeMap<u16, Vec<SocketAddr>>,
     chat: BTreeMap<u16, Vec<u8>>,
 }
 
 #[derive(Default)]
-pub struct ChunkVec(HashMap<U256, TypeBased>);
+struct ChunkVec(HashMap<U256, TypeBased>);
+
+struct CompletelyReceivedMsg(VecDeque<U256>);
 
 fn main() {
     // -------------------------------------------------------------------------
@@ -50,8 +52,7 @@ fn main() {
         msg_seen: HashSet::new(),
     }));
 
-    // --- Local Discovery Setup (Temporary) ---
-    // TODO: Remove this block once the Matchmaker server is hosted.
+    // --- OWN PORT ENTRY (remove this once setup start creating it's own port) ---
     let arg: Vec<String> = env::args().skip(1).collect();
     let port = &arg[0];
 
@@ -82,6 +83,9 @@ fn main() {
 
     let sended_data = Arc::new(Mutex::new(ChunkSended(HashMap::new())));
     let sended_data_clone = Arc::clone(&sended_data);
+
+    let completed_msg = Arc::new(Mutex::new(CompletelyReceivedMsg(VecDeque::new())));
+    let completed_msg_clone = Arc::clone(&completed_msg);
 
     // LISTNER
     thread::spawn(move || {
@@ -122,6 +126,14 @@ fn main() {
                     );
                     // ;
 
+                    {
+                        let completed_msg = completed_msg_clone.lock().unwrap();
+
+                        if completed_msg.0.contains(&msg.id) {
+                            return;
+                        }
+                    }
+
                     // REPLY INSTANTLY IF IT'S RE OTHERWISE STORE VALUES
                     match msg.msg_type {
                         MsgType::Chat => {
@@ -146,6 +158,30 @@ fn main() {
                                         chat: new,
                                     }
                                 });
+
+                            // TODO: add logic for sending rerequest if chunk is missing
+                            if chunk_vec.0.get(&msg.id).unwrap().chat.len()
+                                == msg.total_chunks as usize
+                            {
+                                let data: TypeBased = chunk_vec.0.remove(&msg.id).unwrap();
+                                let mut all_chunk_vec: Vec<u8> = Vec::new();
+                                for val in data.chat.into_values() {
+                                    all_chunk_vec.extend_from_slice(&val);
+                                }
+
+                                let chat = String::deserialze(&mut all_chunk_vec.as_slice());
+
+                                {
+                                    let mut completed_msg = completed_msg_clone.lock().unwrap();
+                                    if completed_msg.0.len() == 1000 {
+                                        completed_msg.0.pop_front();
+                                    }
+
+                                    completed_msg.0.push_back(msg.id);
+                                }
+
+                                println!("{:?}: {:?}", src, chat);
+                            }
                         }
                         MsgType::Ack => {
                             let mut chunk_vec = chunk_vec_clone.lock().unwrap();
