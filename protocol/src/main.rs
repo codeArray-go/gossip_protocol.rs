@@ -24,6 +24,7 @@ struct NodeState {
 struct TypeBased {
     ack: BTreeMap<u16, Vec<SocketAddr>>,
     chat: BTreeMap<u16, Vec<u8>>,
+    removed_acks: u16,
 }
 
 #[derive(Default)]
@@ -156,6 +157,7 @@ fn main() {
                                     TypeBased {
                                         ack: BTreeMap::new(),
                                         chat: new,
+                                        removed_acks: 0,
                                     }
                                 });
 
@@ -184,27 +186,52 @@ fn main() {
                             }
                         }
                         MsgType::Ack => {
-                            let mut chunk_vec = chunk_vec_clone.lock().unwrap();
-                            chunk_vec
-                                .0
-                                .entry(msg.id)
-                                .and_modify(|data| {
-                                    data.ack
-                                        .entry(msg.index)
-                                        .and_modify(|val| {
-                                            val.push(src);
-                                        })
-                                        .or_insert_with(|| vec![src]);
-                                })
-                                .or_insert_with(|| {
-                                    let mut new = BTreeMap::new();
-                                    new.insert(msg.index, vec![src]);
+                            let (current_ack_len, removed_ack) = {
+                                let mut chunk_vec = chunk_vec_clone.lock().unwrap();
+                                chunk_vec
+                                    .0
+                                    .entry(msg.id)
+                                    .and_modify(|data| {
+                                        data.ack
+                                            .entry(msg.index)
+                                            .and_modify(|val| {
+                                                val.push(src);
+                                            })
+                                            .or_insert_with(|| vec![src]);
+                                    })
+                                    .or_insert_with(|| {
+                                        let mut new = BTreeMap::new();
+                                        new.insert(msg.index, vec![src]);
 
-                                    TypeBased {
-                                        ack: new,
-                                        chat: BTreeMap::new(),
-                                    }
-                                });
+                                        TypeBased {
+                                            ack: new,
+                                            chat: BTreeMap::new(),
+                                            removed_acks: 0,
+                                        }
+                                    });
+
+                                let chunk = chunk_vec.0.get(&msg.id).unwrap();
+
+                                (chunk.ack.len(), chunk.removed_acks)
+                            };
+
+                            let mut chunk_vec = chunk_vec_clone.lock().unwrap();
+
+                            if current_ack_len == (msg.total_chunks - removed_ack) as usize {
+                                let sended = sended_data_clone.lock().unwrap();
+                                let target_peer_len = sended.0.get(&msg.id).unwrap().peers.len();
+
+                                if let Some(data) = chunk_vec.0.get_mut(&msg.id) {
+                                    data.ack.retain(|_key, val| {
+                                        if val.len() == target_peer_len {
+                                            data.removed_acks += 1;
+                                            false
+                                        } else {
+                                            true
+                                        }
+                                    });
+                                }
+                            }
                         }
                         MsgType::Re => {
                             let mut sended_data = sended_data_clone.lock().unwrap();
