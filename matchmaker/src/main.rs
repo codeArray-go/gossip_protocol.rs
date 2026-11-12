@@ -24,7 +24,7 @@ fn main() {
         tracker: Vec::new(),
     }));
 
-    let list_clone = node_list.clone();
+    let list_clone = Arc::clone(&node_list);
 
     let mut sender_cache = ChunkSended::default();
 
@@ -36,7 +36,6 @@ fn main() {
             if let Ok((_amt, src)) = socket_clone.recv_from(&mut buff) {
                 let mut nodes_list = list_clone.lock().unwrap();
                 if !nodes_list.tracker.contains(&src) {
-                    println!("{src}");
                     nodes_list.tracker.push(src);
                     nodes_list.combined_list.insert(src);
                 }

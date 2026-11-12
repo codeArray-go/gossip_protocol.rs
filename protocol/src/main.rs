@@ -1,7 +1,7 @@
 use net2::UdpSocketExt;
 use p2p_lib::{
     MsgType, U256,
-    byte_converter::{Deserializer, Serializer},
+    byte_converter::Deserializer,
     utils::{Chunk, ChunkSended},
 };
 use std::{
@@ -286,7 +286,16 @@ fn main() {
                                     HashSet::deserialze(&mut val.as_slice()).unwrap();
 
                                 let file_path = "addr.peer.bin";
-                                save_to_file(file_path, &all_peers)
+
+                                let mut exiting_peers: HashSet<SocketAddr> =
+                                    match read_from_file(file_path) {
+                                        Ok(peers) => peers,
+                                        Err(_) => HashSet::new(),
+                                    };
+
+                                exiting_peers.extend(all_peers);
+
+                                save_to_file(file_path, &exiting_peers)
                                     .expect("Failed to save to file");
                             }
                         }
@@ -298,6 +307,7 @@ fn main() {
 
     let stdin = std::io::stdin();
     let mut input = String::new();
+    println!("Type text and press enter to send");
 
     // --- MESSAGE SENDER ---
     loop {
