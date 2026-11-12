@@ -13,7 +13,7 @@ use std::{
     thread, vec,
 };
 
-use crate::utils::read_from_file;
+use crate::utils::{read_from_file, save_to_file};
 pub mod utils;
 
 struct NodeState {
@@ -21,10 +21,13 @@ struct NodeState {
     msg_seen: HashSet<String>,
 }
 
-struct TypeBased {
-    ack: BTreeMap<u16, Vec<SocketAddr>>,
-    chat: BTreeMap<u16, Vec<u8>>,
-    removed_acks: u16,
+enum TypeBased {
+    Peers((usize, Vec<u8>)),
+    Message {
+        ack: BTreeMap<u16, Vec<SocketAddr>>,
+        chat: BTreeMap<u16, Vec<u8>>,
+        removed_acks: u16,
+    },
 }
 
 #[derive(Default)]
@@ -139,22 +142,19 @@ fn main() {
                     match msg.msg_type {
                         MsgType::Chat => {
                             let mut chunk_vec = chunk_vec_clone.lock().unwrap();
-                            chunk_vec
+                            let chunks = chunk_vec
                                 .0
                                 .entry(msg.id)
                                 .and_modify(|data| {
-                                    data.chat
-                                        .entry(msg.index)
-                                        .and_modify(|val| {
-                                            val.extend_from_slice(msg.msg);
-                                        })
-                                        .or_insert_with(|| msg.msg.to_vec());
+                                    if let TypeBased::Message { chat, .. } = data {
+                                        chat.insert(msg.index, msg.msg.to_vec());
+                                    }
                                 })
                                 .or_insert_with(|| {
                                     let mut new = BTreeMap::new();
                                     new.insert(msg.index, msg.msg.to_vec());
 
-                                    TypeBased {
+                                    TypeBased::Message {
                                         ack: BTreeMap::new(),
                                         chat: new,
                                         removed_acks: 0,
@@ -162,74 +162,75 @@ fn main() {
                                 });
 
                             // TODO: add logic for sending rerequest if chunk is missing
-                            if chunk_vec.0.get(&msg.id).unwrap().chat.len()
-                                == msg.total_chunks as usize
-                            {
-                                let data: TypeBased = chunk_vec.0.remove(&msg.id).unwrap();
-                                let mut all_chunk_vec: Vec<u8> = Vec::new();
-                                for val in data.chat.into_values() {
-                                    all_chunk_vec.extend_from_slice(&val);
-                                }
+                            let is_completed = if let TypeBased::Message { chat, .. } = chunks {
+                                chat.len() == msg.total_chunks as usize
+                            } else {
+                                return;
+                            };
 
-                                let chat = String::deserialze(&mut all_chunk_vec.as_slice());
+                            if is_completed {
+                                let extracted_chunks = chunk_vec.0.remove(&msg.id).unwrap();
+                                if let TypeBased::Message { chat, .. } = extracted_chunks {
+                                    let all_chunk_vec: Vec<u8> =
+                                        chat.into_values().flatten().collect();
 
-                                {
+                                    let text = String::deserialze(&mut all_chunk_vec.as_slice());
+
                                     let mut completed_msg = completed_msg_clone.lock().unwrap();
                                     if completed_msg.0.len() == 1000 {
                                         completed_msg.0.pop_front();
                                     }
 
                                     completed_msg.0.push_back(msg.id);
-                                }
 
-                                println!("{:?}: {:?}", src, chat);
+                                    println!("{:?}: {:?}", src, text);
+                                }
                             }
                         }
                         MsgType::Ack => {
-                            let (current_ack_len, removed_ack) = {
-                                let mut chunk_vec = chunk_vec_clone.lock().unwrap();
-                                chunk_vec
-                                    .0
-                                    .entry(msg.id)
-                                    .and_modify(|data| {
-                                        data.ack
-                                            .entry(msg.index)
+                            let mut chunk_vec = chunk_vec_clone.lock().unwrap();
+                            let chunk = chunk_vec
+                                .0
+                                .entry(msg.id)
+                                .and_modify(|data| {
+                                    if let TypeBased::Message { ack, .. } = data {
+                                        ack.entry(msg.index)
                                             .and_modify(|val| {
                                                 val.push(src);
                                             })
                                             .or_insert_with(|| vec![src]);
-                                    })
-                                    .or_insert_with(|| {
-                                        let mut new = BTreeMap::new();
-                                        new.insert(msg.index, vec![src]);
+                                    }
+                                })
+                                .or_insert_with(|| {
+                                    let mut new = BTreeMap::new();
+                                    new.insert(msg.index, vec![src]);
 
-                                        TypeBased {
-                                            ack: new,
-                                            chat: BTreeMap::new(),
-                                            removed_acks: 0,
-                                        }
-                                    });
+                                    TypeBased::Message {
+                                        ack: new,
+                                        chat: BTreeMap::new(),
+                                        removed_acks: 0,
+                                    }
+                                });
 
-                                let chunk = chunk_vec.0.get(&msg.id).unwrap();
+                            if let TypeBased::Message {
+                                ack, removed_acks, ..
+                            } = chunk
+                            {
+                                if ack.len() == (msg.total_chunks - *removed_acks) as usize {
+                                    let sended = sended_data_clone.lock().unwrap();
+                                    let target_peer_len =
+                                        sended.0.get(&msg.id).unwrap().peers.len();
 
-                                (chunk.ack.len(), chunk.removed_acks)
-                            };
-
-                            let mut chunk_vec = chunk_vec_clone.lock().unwrap();
-
-                            if current_ack_len == (msg.total_chunks - removed_ack) as usize {
-                                let sended = sended_data_clone.lock().unwrap();
-                                let target_peer_len = sended.0.get(&msg.id).unwrap().peers.len();
-
-                                if let Some(data) = chunk_vec.0.get_mut(&msg.id) {
-                                    data.ack.retain(|_key, val| {
+                                    ack.retain(|_key, val| {
                                         if val.len() == target_peer_len {
-                                            data.removed_acks += 1;
+                                            *removed_acks += 1;
                                             false
                                         } else {
                                             true
                                         }
                                     });
+                                } else {
+                                    return;
                                 }
                             }
                         }
@@ -255,13 +256,39 @@ fn main() {
                         }
                         MsgType::Peers => {
                             // SAVED PEER LIST TO FILE
-                            // let mut combined_bytes = all_bytes.as_slice();
-                            // let peers: HashSet<SocketAddr> =
-                            //     HashSet::deserialze(&mut combined_bytes).unwrap();
-                            // let file_path = "addr.peer.bin";
-                            // save_to_file(file_path, &peers).expect("Failed to save to file");
+                            let all_bytes = {
+                                let mut chunk_vec = chunk_vec_clone.lock().unwrap();
 
-                            // TODO:- If any chunk got missed send request for it to back
+                                let entry = chunk_vec
+                                    .0
+                                    .entry(msg.id)
+                                    .or_insert_with(|| TypeBased::Peers((0, Vec::new())));
+
+                                let all_peers = if let TypeBased::Peers((total_count, val)) = entry
+                                {
+                                    val.extend_from_slice(msg.msg);
+                                    *total_count += 1;
+
+                                    *total_count == msg.total_chunks as usize
+                                } else {
+                                    false
+                                };
+
+                                if all_peers {
+                                    chunk_vec.0.remove(&msg.id).unwrap()
+                                } else {
+                                    return;
+                                }
+                            };
+
+                            if let TypeBased::Peers((_, val)) = all_bytes {
+                                let all_peers: HashSet<SocketAddr> =
+                                    HashSet::deserialze(&mut val.as_slice()).unwrap();
+
+                                let file_path = "addr.peer.bin";
+                                save_to_file(file_path, &all_peers)
+                                    .expect("Failed to save to file");
+                            }
                         }
                     }
                 }
