@@ -351,7 +351,7 @@ fn main() {
                 }
             };
 
-            let send_to_peers: Vec<SocketAddr> = peers.into_iter().take(10).collect();
+            let send_to_peers = peers.clone();
 
             let msg_byte = text.as_bytes();
             let msg_type = p2p_lib::MsgType::Chat;
