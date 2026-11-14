@@ -35,7 +35,6 @@ fn main() {
         loop {
             if let Ok((_amt, src)) = socket_clone.recv_from(&mut buff) {
                 let mut nodes_list = list_clone.lock().unwrap();
-                println!("{:?}", src);
                 if !nodes_list.tracker.contains(&src) {
                     nodes_list.tracker.push(src);
                     nodes_list.combined_list.insert(src);
@@ -77,7 +76,7 @@ fn main() {
             &buffer,
             None,
             None,
-            send_to_peers,
+            &send_to_peers,
             &socket,
         ) {
             Ok(_ip) => {

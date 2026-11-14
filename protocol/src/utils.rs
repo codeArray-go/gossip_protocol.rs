@@ -6,7 +6,7 @@ use std::{
     path::Path,
 };
 
-pub fn save_to_file<P: AsRef<Path>>(path: P, adds: &HashSet<SocketAddr>) -> IoResult<()> {
+pub fn save_to_file<P: AsRef<Path>>(path: P, adds: &Vec<SocketAddr>) -> IoResult<()> {
     let mut file = File::create(path)?;
 
     let len = adds.len() as u64;
@@ -31,14 +31,14 @@ pub fn save_to_file<P: AsRef<Path>>(path: P, adds: &HashSet<SocketAddr>) -> IoRe
     Ok(())
 }
 
-pub fn read_from_file(path: impl AsRef<Path>) -> IoResult<HashSet<SocketAddr>> {
+pub fn read_from_file(path: impl AsRef<Path>) -> IoResult<Vec<SocketAddr>> {
     let mut file = File::open(path)?;
 
     let mut len_buf = [0u8; 8];
     file.read_exact(&mut len_buf)?;
     let len = u64::from_le_bytes(len_buf);
 
-    let mut data: HashSet<SocketAddr> = HashSet::with_capacity(len as usize);
+    let mut data: Vec<SocketAddr> = Vec::with_capacity(len as usize);
 
     for _ in 0..len {
         let mut tag = [0u8; 1];
@@ -79,7 +79,7 @@ pub fn read_from_file(path: impl AsRef<Path>) -> IoResult<HashSet<SocketAddr>> {
             }
         };
 
-        data.insert(addr);
+        data.push(addr);
     }
 
     Ok(data)

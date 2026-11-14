@@ -17,7 +17,7 @@ use crate::utils::{read_from_file, save_to_file};
 pub mod utils;
 
 struct NodeState {
-    peer: Vec<SocketAddr>,
+    peer: Arc<Vec<SocketAddr>>,
     msg_seen: HashSet<String>,
 }
 
@@ -52,7 +52,7 @@ fn main() {
     // println!("File gerated.");
 
     let state = Arc::new(Mutex::new(NodeState {
-        peer: Vec::new(),
+        peer: Arc::new(Vec::new()),
         msg_seen: HashSet::new(),
     }));
 
@@ -99,10 +99,13 @@ fn main() {
             if let Ok((amt, src)) = socket_clone.recv_from(&mut buff) {
                 let mut actual_byte = &buff[..amt];
 
-                let mut node = state_clone.lock().unwrap();
-                if !node.peer.contains(&src) {
-                    println!("New address connected: {:?}", src);
-                    node.peer.push(src);
+                {
+                    let mut node = state_clone.lock().unwrap();
+                    if !node.peer.contains(&src) {
+                        println!("New address connected: {:?}", src);
+                        let mutable_vec = Arc::make_mut(&mut node.peer);
+                        mutable_vec.push(src);
+                    }
                 }
 
                 if let Ok(msg) = Chunk::deserialze(&mut actual_byte) {
@@ -125,14 +128,13 @@ fn main() {
                         &ack_text_byte,
                         Some(msg.id),
                         Some(msg.index),
-                        vec![src],
+                        &[src],
                         &socket_clone,
                     );
                     // ;
 
                     {
                         let completed_msg = completed_msg_clone.lock().unwrap();
-
                         if completed_msg.0.contains(&msg.id) {
                             return;
                         }
@@ -250,7 +252,7 @@ fn main() {
                                 &chunk,
                                 Some(msg.id),
                                 Some(msg.index),
-                                vec![src],
+                                &[src],
                                 &socket_clone,
                             );
                         }
@@ -287,10 +289,10 @@ fn main() {
 
                                 let file_path = "addr.peer.bin";
 
-                                let mut exiting_peers: HashSet<SocketAddr> =
+                                let mut exiting_peers: Vec<SocketAddr> =
                                     match read_from_file(file_path) {
                                         Ok(peers) => peers,
-                                        Err(_) => HashSet::new(),
+                                        Err(_) => Vec::new(),
                                     };
 
                                 exiting_peers.extend(all_peers);
@@ -320,26 +322,30 @@ fn main() {
         // let text = fs::read_to_string(path).expect("Faild to read file");
 
         if !text.is_empty() {
-            let peers: Vec<SocketAddr> = {
-                let path = Path::new("./addr.peer.bin");
-                let mut node = state.lock().unwrap();
+            let peers: Arc<Vec<SocketAddr>> = 'get_peers: {
+                {
+                    let node = state.lock().unwrap();
+                    if !node.peer.is_empty() {
+                        break 'get_peers node.peer.clone();
+                    }
+                }
 
-                // TAKE PEER FROM LIST WHEN AVAILABLE ELSE FROM SERVER
+                let path = Path::new("./addr.peer.bin");
+                let mut fetched_peers: Vec<SocketAddr> = read_from_file(path).unwrap_or_default();
+
+                if fetched_peers.is_empty() {
+                    if let Ok(mut resolved) = "della-awakenings.tun.ply.gg:38576".to_socket_addrs()
+                    {
+                        if let Some(addr) = resolved.next() {
+                            fetched_peers.push(addr)
+                        }
+                    }
+                }
+
+                let mut node = state.lock().unwrap();
                 if node.peer.is_empty() {
-                    read_from_file(path)
-                        .ok()
-                        .map(|addr| {
-                            node.peer.extend(addr);
-                            node.peer.clone()
-                        })
-                        .unwrap_or_else(|| {
-                            "della-awakenings.tun.ply.gg:38576"
-                                .to_socket_addrs()
-                                .ok()
-                                .and_then(|mut resolved_add| resolved_add.next())
-                                .map(|peer_addr| vec![peer_addr])
-                                .unwrap_or_default()
-                        })
+                    node.peer = Arc::new(fetched_peers);
+                    node.peer.clone()
                 } else {
                     node.peer.clone()
                 }
@@ -354,7 +360,7 @@ fn main() {
 
             // TODO:- Handle error correctly as with error there will be ip of those whome failed to send chunks
             let msg_id = cache
-                .send_in_chunks(msg_type, msg_byte, None, None, send_to_peers, &socket)
+                .send_in_chunks(msg_type, msg_byte, None, None, &send_to_peers, &socket)
                 .expect("Failed to send");
 
             let mut node = state.lock().unwrap();

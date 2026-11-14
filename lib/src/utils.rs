@@ -79,7 +79,7 @@ impl<'a> ChunkSended {
         msg: &[u8],
         id: Option<U256>,
         index: Option<u16>,
-        peers: Vec<SocketAddr>,
+        peers: &[SocketAddr],
         socket: &UdpSocket,
     ) -> Result<U256, Vec<SocketAddr>> {
         const MAX_SAFE_PAYLOAD: usize = 1200;
