@@ -11,8 +11,8 @@ use std::{
 };
 
 pub struct Chunk<'a> {
-    pub id: U256,
     pub msg_type: MsgType,
+    pub id: U256,
     pub msg: &'a [u8],
     pub index: u16,
     pub total_chunks: u16,
@@ -30,8 +30,8 @@ pub struct ChunkSended(pub HashMap<U256, SendedData>);
 
 impl<'a> Serializer for Chunk<'a> {
     fn serialize(&self, buffer: &mut Vec<u8>) {
-        self.id.serialize(buffer);
         self.msg_type.serialize(buffer);
+        self.id.serialize(buffer);
         self.msg.serialize(buffer);
         self.index.serialize(buffer);
         self.total_chunks.serialize(buffer);
@@ -46,11 +46,11 @@ impl<'a> Deserializer<'a> for Chunk<'a> {
             return Err("Buffer is too small for a valid message chunk");
         }
 
-        // Message ID / Hash (32 bytes)
-        let id = U256::deserialze(buffer)?;
-
         // Msg_type
         let msg_type = MsgType::deserialze(buffer)?;
+
+        // Message ID / Hash (32 bytes)
+        let id = U256::deserialze(buffer)?;
 
         // Message Payload
         let msg = <&[u8] as Deserializer>::deserialze(buffer)?;
@@ -137,6 +137,7 @@ impl<'a> ChunkSended {
                 for packet in &batch {
                     active_peers.retain(|peer| match socket.send_to(packet, peer) {
                         Ok(_) => {
+                            // println!("message chunk for peer:{:?}  = {:?}", peer, packet);
                             return true;
                         }
                         Err(e) => {
@@ -171,7 +172,6 @@ impl<'a> ChunkSended {
         if !rm_ip.is_empty() {
             return Err(rm_ip);
         }
-
         Ok(msg_id)
     }
 }

@@ -1,6 +1,10 @@
-use p2p_lib::{MsgType, byte_converter::Serializer, utils::ChunkSended};
+use p2p_lib::{
+    MsgType,
+    byte_converter::{Deserializer, Serializer},
+    utils::ChunkSended,
+};
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashMap},
     net::{SocketAddr, UdpSocket},
     sync::{Arc, Mutex},
     thread,
@@ -8,7 +12,7 @@ use std::{
 };
 
 struct NodesList {
-    combined_list: HashSet<SocketAddr>,
+    combined_list: Vec<SocketAddr>,
     tracker: Vec<SocketAddr>,
 }
 
@@ -20,7 +24,7 @@ fn main() {
     let socket_clone = socket.try_clone().expect("Failed to clone socket.");
 
     let node_list = Arc::new(Mutex::new(NodesList {
-        combined_list: HashSet::new(),
+        combined_list: Vec::new(),
         tracker: Vec::new(),
     }));
 
@@ -33,19 +37,33 @@ fn main() {
 
         // --- LISTNER ---
         loop {
-            if let Ok((_amt, src)) = socket_clone.recv_from(&mut buff) {
-                let mut nodes_list = list_clone.lock().unwrap();
-                if !nodes_list.tracker.contains(&src) {
-                    nodes_list.tracker.push(src);
-                    nodes_list.combined_list.insert(src);
+            if let Ok((amt, src)) = socket_clone.recv_from(&mut buff) {
+                let mut actual_byte = &buff[..amt];
+
+                let msg_type = MsgType::deserialze(&mut actual_byte).unwrap();
+
+                println!("{:?}", msg_type);
+
+                if msg_type != MsgType::Ack {
+                    let mut nodes_list = list_clone.lock().unwrap();
+                    if !nodes_list.tracker.contains(&src) {
+                        nodes_list.tracker.push(src);
+                        nodes_list.combined_list.push(src);
+                    }
                 }
+
+                // Add logic if msg type is ack then remove msg from tracker
             }
         }
     });
 
     loop {
-        let data = {
+        let data = 'node_list: {
             let list = node_list.lock().unwrap();
+
+            if list.tracker.is_empty() {
+                break 'node_list None;
+            }
 
             if list.combined_list.is_empty() {
                 None
@@ -69,7 +87,7 @@ fn main() {
         let mut buffer: Vec<u8> = vec![];
         new_list.serialize(&mut buffer);
 
-        let peer_quantity = send_to_peers.len() as usize;
+        println!("{:?}", send_to_peers);
 
         match sender_cache.send_in_chunks(
             MsgType::Peers,
@@ -79,13 +97,7 @@ fn main() {
             &send_to_peers,
             &socket,
         ) {
-            Ok(_ip) => {
-                // Removed those ip whome list is sended successfully
-                let mut list = node_list.lock().unwrap();
-                let curr_list_len = list.tracker.len() as usize;
-                list.tracker
-                    .drain(curr_list_len.saturating_sub(peer_quantity)..);
-            }
+            Ok(_msg_id) => {}
             Err(lst) => {
                 // Adding ip back to target if failed to send packet
                 println!("Adding peer back to queue");

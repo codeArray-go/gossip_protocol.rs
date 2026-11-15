@@ -21,7 +21,7 @@ struct NodeState {
     msg_seen: HashSet<String>,
 }
 
-enum TypeBased {
+pub enum TypeBased {
     Peers((usize, Vec<u8>)),
     Message {
         ack: BTreeMap<u16, Vec<SocketAddr>>,
@@ -100,11 +100,19 @@ fn main() {
                 let mut actual_byte = &buff[..amt];
 
                 {
-                    let mut node = state_clone.lock().unwrap();
-                    if !node.peer.contains(&src) {
-                        println!("New address connected: {:?}", src);
-                        let mutable_vec = Arc::make_mut(&mut node.peer);
-                        mutable_vec.push(src);
+                    if src
+                        != "della-awakenings.tun.ply.gg:38576"
+                            .to_socket_addrs()
+                            .unwrap()
+                            .next()
+                            .unwrap()
+                    {
+                        let mut node = state_clone.lock().unwrap();
+                        if !node.peer.contains(&src) {
+                            println!("New address connected: {:?}", src);
+                            let mutable_vec = Arc::make_mut(&mut node.peer);
+                            mutable_vec.push(src);
+                        }
                     }
                 }
 
@@ -118,20 +126,24 @@ fn main() {
                     }
 
                     // ACKNOWLEDGMENT
-                    let msg_type = MsgType::Ack;
-                    let ack_text = "Done";
-                    let ack_text_byte = ack_text.as_bytes();
+                    if msg.msg_type != MsgType::Ack {
+                        println!("MsgType revieved: {:?}", msg.msg_type);
+                        let msg_type = MsgType::Ack;
+                        let ack_text = "Done";
+                        let ack_text_byte = ack_text.as_bytes();
 
-                    let mut sended_chunk = ChunkSended::default();
-                    let _to_sended_peer_id = sended_chunk.send_in_chunks(
-                        msg_type,
-                        &ack_text_byte,
-                        Some(msg.id),
-                        Some(msg.index),
-                        &[src],
-                        &socket_clone,
-                    );
-                    // ;
+                        let mut sended_chunk = ChunkSended::default();
+                        let _to_sended_peer_id = sended_chunk.send_in_chunks(
+                            msg_type,
+                            &ack_text_byte,
+                            Some(msg.id),
+                            Some(msg.index),
+                            &[src],
+                            &socket_clone,
+                        );
+                    };
+
+                    println!("MsgType revieved: {:?}", msg.msg_type);
 
                     {
                         let completed_msg = completed_msg_clone.lock().unwrap();
@@ -284,8 +296,8 @@ fn main() {
                             };
 
                             if let TypeBased::Peers((_, val)) = all_bytes {
-                                let all_peers: HashSet<SocketAddr> =
-                                    HashSet::deserialze(&mut val.as_slice()).unwrap();
+                                let all_peers: Vec<SocketAddr> =
+                                    Vec::deserialze(&mut val.as_slice()).unwrap();
 
                                 let file_path = "addr.peer.bin";
 
@@ -299,6 +311,11 @@ fn main() {
 
                                 save_to_file(file_path, &exiting_peers)
                                     .expect("Failed to save to file");
+
+                                let mut node = state_clone.lock().unwrap();
+                                let mutable = Arc::make_mut(&mut node.peer);
+
+                                mutable.extend(exiting_peers);
                             }
                         }
                     }
@@ -307,13 +324,12 @@ fn main() {
         }
     });
 
+    // --- MESSAGE SENDER ---
     let stdin = std::io::stdin();
     let mut input = String::new();
     println!("Type text and press enter to send");
 
-    // --- MESSAGE SENDER ---
     loop {
-        input.clear();
         stdin.read_line(&mut input).unwrap();
         let text = input.trim().to_string();
 
@@ -366,5 +382,7 @@ fn main() {
             let mut node = state.lock().unwrap();
             node.msg_seen.insert(format!("{:?}", msg_id));
         }
+
+        input.clear();
     }
 }
