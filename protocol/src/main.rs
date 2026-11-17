@@ -116,6 +116,8 @@ fn main() {
                     }
                 }
 
+                println!("{:?}", src);
+
                 if let Ok(msg) = Chunk::deserialze(&mut actual_byte) {
                     let crr_total_chunks: u16 = msg.total_chunks;
                     let curr_idx = msg.index as u16;
@@ -142,8 +144,6 @@ fn main() {
                             &socket_clone,
                         );
                     };
-
-                    println!("MsgType revieved: {:?}", msg.msg_type);
 
                     {
                         let completed_msg = completed_msg_clone.lock().unwrap();

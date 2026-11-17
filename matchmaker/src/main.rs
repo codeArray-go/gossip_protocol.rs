@@ -1,7 +1,8 @@
+use dashmap::DashMap;
 use p2p_lib::{
-    MsgType,
+    MsgType, U256,
     byte_converter::{Deserializer, Serializer},
-    utils::ChunkSended,
+    utils::{Chunk, ChunkSended},
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -15,6 +16,13 @@ struct NodesList {
     combined_list: Vec<SocketAddr>,
     tracker: Vec<SocketAddr>,
 }
+
+struct DataType {
+    ack: BTreeMap<u16, Vec<SocketAddr>>,
+    removed_ack: u16,
+}
+
+struct AckData(DashMap<U256, DataType>);
 
 fn main() {
     let add = format!("127.0.0.1:4200");
@@ -32,6 +40,10 @@ fn main() {
 
     let mut sender_cache = ChunkSended::default();
 
+    let ack_data_clone = Arc::clone(&Arc::new(AckData(DashMap::new())));
+
+    let sended_data_clone = Arc::clone(&Arc::new(Mutex::new(ChunkSended(HashMap::new()))));
+
     thread::spawn(move || {
         let mut buff = [0u8; 4];
 
@@ -40,19 +52,59 @@ fn main() {
             if let Ok((amt, src)) = socket_clone.recv_from(&mut buff) {
                 let mut actual_byte = &buff[..amt];
 
-                let msg_type = MsgType::deserialze(&mut actual_byte).unwrap();
+                println!("{src}");
 
-                println!("{:?}", msg_type);
+                if let Ok(msg) = Chunk::deserialze(&mut actual_byte) {
+                    if msg.msg_type == MsgType::Ack {
+                        let mut chunk = ack_data_clone
+                            .0
+                            .entry(msg.id)
+                            .and_modify(|data| {
+                                data.ack
+                                    .entry(msg.index)
+                                    .and_modify(|val| val.push(src))
+                                    .or_insert_with(|| vec![src]);
+                            })
+                            .or_insert_with(|| {
+                                let mut new = BTreeMap::new();
+                                new.insert(msg.index, vec![src]);
 
-                if msg_type != MsgType::Ack {
-                    let mut nodes_list = list_clone.lock().unwrap();
-                    if !nodes_list.tracker.contains(&src) {
-                        nodes_list.tracker.push(src);
-                        nodes_list.combined_list.push(src);
+                                DataType {
+                                    ack: new,
+                                    removed_ack: 0,
+                                }
+                            });
+
+                        if chunk.ack.len() == (msg.total_chunks - chunk.removed_ack) as usize {
+                            let sended = sended_data_clone.lock().unwrap();
+                            let target_peer_len = sended.0.get(&msg.id).unwrap().peers.len();
+
+                            let DataType { ack, removed_ack } = &mut *chunk;
+
+                            ack.retain(|_k, v| {
+                                if v.len() == target_peer_len {
+                                    *removed_ack += 1;
+                                    false
+                                } else {
+                                    true
+                                }
+                            });
+                        } else {
+                            return;
+                        }
+
+                        let mut nodes_list = list_clone.lock().unwrap();
+                        if !nodes_list.tracker.contains(&src) {
+                            nodes_list.tracker.push(src);
+                            nodes_list.combined_list.push(src);
+                        }
+
+                        if chunk.removed_ack == msg.total_chunks {
+                            nodes_list.tracker.retain(|&val| val != src);
+                            return;
+                        }
                     }
                 }
-
-                // Add logic if msg type is ack then remove msg from tracker
             }
         }
     });

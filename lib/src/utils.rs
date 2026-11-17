@@ -62,8 +62,8 @@ impl<'a> Deserializer<'a> for Chunk<'a> {
         let total_chunks = u16::deserialze(buffer)?;
 
         Ok(Chunk {
-            id,
             msg_type,
+            id,
             msg,
             index,
             total_chunks,
