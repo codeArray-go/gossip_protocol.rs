@@ -116,8 +116,6 @@ fn main() {
                     }
                 }
 
-                println!("{:?}", src);
-
                 if let Ok(msg) = Chunk::deserialze(&mut actual_byte) {
                     let crr_total_chunks: u16 = msg.total_chunks;
                     let curr_idx = msg.index as u16;
@@ -144,6 +142,7 @@ fn main() {
                             &socket_clone,
                         );
                     };
+                    // ;
 
                     {
                         let completed_msg = completed_msg_clone.lock().unwrap();
@@ -378,6 +377,8 @@ fn main() {
             let msg_id = cache
                 .send_in_chunks(msg_type, msg_byte, None, None, &send_to_peers, &socket)
                 .expect("Failed to send");
+
+            println!("message: {:?}", cache.0);
 
             let mut node = state.lock().unwrap();
             node.msg_seen.insert(format!("{:?}", msg_id));

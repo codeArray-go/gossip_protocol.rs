@@ -18,6 +18,7 @@ pub struct Chunk<'a> {
     pub total_chunks: u16,
 }
 
+#[derive(Debug)]
 pub struct SendedData {
     pub peers: Vec<SocketAddr>,
     pub chunks: BTreeMap<u16, Vec<u8>>,
@@ -25,7 +26,7 @@ pub struct SendedData {
 }
 
 // CHUNK TRACKER
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ChunkSended(pub HashMap<U256, SendedData>);
 
 impl<'a> Serializer for Chunk<'a> {
@@ -40,8 +41,8 @@ impl<'a> Serializer for Chunk<'a> {
 
 impl<'a> Deserializer<'a> for Chunk<'a> {
     fn deserialze(buffer: &mut &'a [u8]) -> std::prelude::v1::Result<Self, &'static str> {
-        // Min header size: 32 (Hash) + 4 (msg_len) + 2 (index) + 2 (total_chunks) = 40 bytes
-        const MIN_HEADER_SIZE: usize = 40;
+        // Min header size: 32 (Hash) + 2 (index) + 2 (total_chunks) = 40 bytes
+        const MIN_HEADER_SIZE: usize = 38;
         if buffer.len() < MIN_HEADER_SIZE {
             return Err("Buffer is too small for a valid message chunk");
         }
@@ -93,6 +94,7 @@ impl<'a> ChunkSended {
         let mut rm_ip: Vec<SocketAddr> = Vec::new();
 
         for chunk_batch in all_packet.chunks(25) {
+            println!("Total Chunks in a batch: {:?}", chunk_batch.len());
             let mut batch = Vec::with_capacity(chunk_batch.len());
 
             for (idx, chunk_slice) in chunk_batch {
@@ -114,17 +116,22 @@ impl<'a> ChunkSended {
 
                 // SAVING TO ChunkSended
 
-                if msg_type == MsgType::Chat {
+                if msg_type == MsgType::Chat || msg_type == MsgType::Peers {
                     self.0
-                        .entry(msg_id.clone())
+                        .entry(msg_id)
                         .and_modify(|msg_data| {
                             msg_data.chunks.insert(curr_index, buffer.clone());
                             msg_data.total = total_chunk;
                         })
-                        .or_insert_with(|| SendedData {
-                            peers: Vec::new(),
-                            chunks: BTreeMap::new(),
-                            total: 0,
+                        .or_insert_with(|| {
+                            let mut chunky = BTreeMap::new();
+                            chunky.insert(curr_index, buffer.clone());
+
+                            SendedData {
+                                peers: Vec::new(),
+                                chunks: chunky,
+                                total: 0,
+                            }
                         });
                 }
 
@@ -137,7 +144,6 @@ impl<'a> ChunkSended {
                 for packet in &batch {
                     active_peers.retain(|peer| match socket.send_to(packet, peer) {
                         Ok(_) => {
-                            // println!("message chunk for peer:{:?}  = {:?}", peer, packet);
                             return true;
                         }
                         Err(e) => {

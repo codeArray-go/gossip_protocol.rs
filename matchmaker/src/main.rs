@@ -5,7 +5,7 @@ use p2p_lib::{
     utils::{Chunk, ChunkSended},
 };
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     net::{SocketAddr, UdpSocket},
     sync::{Arc, Mutex},
     thread,
@@ -38,21 +38,18 @@ fn main() {
 
     let list_clone = Arc::clone(&node_list);
 
-    let mut sender_cache = ChunkSended::default();
+    let sender_cache = Arc::new(Mutex::new(ChunkSended::default()));
+    let sended_data_clone = Arc::clone(&sender_cache);
 
     let ack_data_clone = Arc::clone(&Arc::new(AckData(DashMap::new())));
 
-    let sended_data_clone = Arc::clone(&Arc::new(Mutex::new(ChunkSended(HashMap::new()))));
-
     thread::spawn(move || {
-        let mut buff = [0u8; 4];
+        let mut buff = [0u8; 65_535];
 
         // --- LISTNER ---
         loop {
             if let Ok((amt, src)) = socket_clone.recv_from(&mut buff) {
                 let mut actual_byte = &buff[..amt];
-
-                println!("{src}");
 
                 if let Ok(msg) = Chunk::deserialze(&mut actual_byte) {
                     if msg.msg_type == MsgType::Ack {
@@ -76,8 +73,14 @@ fn main() {
                             });
 
                         if chunk.ack.len() == (msg.total_chunks - chunk.removed_ack) as usize {
-                            let sended = sended_data_clone.lock().unwrap();
-                            let target_peer_len = sended.0.get(&msg.id).unwrap().peers.len();
+                            let mut sended = sended_data_clone.lock().unwrap();
+                            println!("sended data:- {:?}", sended.0.get(&msg.id));
+
+                            let target_peer_len: usize = if chunk.ack.len() == 0 {
+                                sended.0.remove(&msg.id).unwrap().peers.len()
+                            } else {
+                                sended.0.get(&msg.id).unwrap().peers.len()
+                            };
 
                             let DataType { ack, removed_ack } = &mut *chunk;
 
@@ -92,16 +95,11 @@ fn main() {
                         } else {
                             return;
                         }
-
+                    } else {
                         let mut nodes_list = list_clone.lock().unwrap();
                         if !nodes_list.tracker.contains(&src) {
                             nodes_list.tracker.push(src);
                             nodes_list.combined_list.push(src);
-                        }
-
-                        if chunk.removed_ack == msg.total_chunks {
-                            nodes_list.tracker.retain(|&val| val != src);
-                            return;
                         }
                     }
                 }
@@ -109,6 +107,7 @@ fn main() {
         }
     });
 
+    // SENDER
     loop {
         let data = 'node_list: {
             let list = node_list.lock().unwrap();
@@ -139,17 +138,15 @@ fn main() {
         let mut buffer: Vec<u8> = vec![];
         new_list.serialize(&mut buffer);
 
-        println!("{:?}", send_to_peers);
+        println!("List sended to:- {:?}", send_to_peers);
+        let mut cache = sender_cache.lock().unwrap();
 
-        match sender_cache.send_in_chunks(
-            MsgType::Peers,
-            &buffer,
-            None,
-            None,
-            &send_to_peers,
-            &socket,
-        ) {
-            Ok(_msg_id) => {}
+        match cache.send_in_chunks(MsgType::Peers, &buffer, None, None, &send_to_peers, &socket) {
+            Ok(_msg_id) => {
+                println!("Message: {:?}", cache.0);
+                let mut list = node_list.lock().unwrap();
+                list.tracker.retain(|&node| !send_to_peers.contains(&node));
+            }
             Err(lst) => {
                 // Adding ip back to target if failed to send packet
                 println!("Adding peer back to queue");
