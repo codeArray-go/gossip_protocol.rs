@@ -74,7 +74,6 @@ fn main() {
 
                         if chunk.ack.len() == (msg.total_chunks - chunk.removed_ack) as usize {
                             let mut sended = sended_data_clone.lock().unwrap();
-                            println!("sended data:- {:?}", sended.0.get(&msg.id));
 
                             let target_peer_len: usize = if chunk.ack.len() == 0 {
                                 sended.0.remove(&msg.id).unwrap().peers.len()
@@ -143,7 +142,6 @@ fn main() {
 
         match cache.send_in_chunks(MsgType::Peers, &buffer, None, None, &send_to_peers, &socket) {
             Ok(_msg_id) => {
-                println!("Message: {:?}", cache.0);
                 let mut list = node_list.lock().unwrap();
                 list.tracker.retain(|&node| !send_to_peers.contains(&node));
             }

@@ -1,3 +1,4 @@
+use crate::utils::{read_from_file, save_to_file};
 use net2::UdpSocketExt;
 use p2p_lib::{
     MsgType, U256,
@@ -12,15 +13,15 @@ use std::{
     sync::{Arc, Mutex},
     thread, vec,
 };
-
-use crate::utils::{read_from_file, save_to_file};
 pub mod utils;
 
+// Storage for Address
 struct NodeState {
     peer: Arc<Vec<SocketAddr>>,
     msg_seen: HashSet<String>,
 }
 
+// Type based distribution
 pub enum TypeBased {
     Peers((usize, Vec<u8>)),
     Message {
@@ -30,41 +31,29 @@ pub enum TypeBased {
     },
 }
 
+// Storage for Chunks recieved
 #[derive(Default)]
 struct ChunkVec(HashMap<U256, TypeBased>);
 
+// Storage for Messages which are Deserialized successfully
 struct CompletelyReceivedMsg(VecDeque<U256>);
 
 fn main() {
-    // -------------------------------------------------------------------------
-    // TEST UTILITY: 10MB Payload Generator
-    // Uncomment the commented code below to generate a dummy text file for chunk testing.
-    // -------------------------------------------------------------------------
-    // let mut file = File::create("text.txt").expect("Failed to create file.");
-    //
-    // for i in 1..=200_00 {
-    //     let line = format!(
-    //         "Message block {} - Testing UDP chunking logic in Rust. Repeating to reach 10MB payload size...\n",
-    //         i
-    //     );
-    //     file.write_all(line.as_bytes()).unwrap();
-    // }
-    // println!("File gerated.");
-
     let state = Arc::new(Mutex::new(NodeState {
         peer: Arc::new(Vec::new()),
         msg_seen: HashSet::new(),
     }));
 
-    // --- OWN PORT ENTRY (remove this once setup start creating it's own port) ---
+    // My Listener or Sender PORT Entry
     let arg: Vec<String> = env::args().skip(1).collect();
     let port = &arg[0];
 
     let add = format!("0.0.0.0:{port}");
     println!("Running currenlty on: {:?}", &add);
     let socket = UdpSocket::bind(add).expect("Give a correct port.");
+    // ;
 
-    // INCREASE MEMORY BUFFER SIZE TO 2MB
+    // Increases memory buffer size to 2MB
     let new_size = 1024 * 1024 * 2;
     socket
         .set_send_buffer_size(new_size)
@@ -75,10 +64,7 @@ fn main() {
         .expect("Failed to set buffer size at receving end");
 
     let socket_clone = socket.try_clone().expect("Error while cloning.");
-
-    // FILLED node.peers IF FILE ALREADY EXISTS THERE ELSE CONNECT TO MATCHMAKER
-
-    // -----------------------------------------
+    // ;
 
     let chunk_vec = Arc::new(Mutex::new(ChunkVec(HashMap::new())));
     let chunk_vec_clone = Arc::clone(&chunk_vec);
@@ -91,7 +77,7 @@ fn main() {
     let completed_msg = Arc::new(Mutex::new(CompletelyReceivedMsg(VecDeque::new())));
     let completed_msg_clone = Arc::clone(&completed_msg);
 
-    // LISTNER
+    // -- LISTNER --
     thread::spawn(move || {
         let mut buff = [0u8; 65_535];
 
@@ -99,6 +85,7 @@ fn main() {
             if let Ok((amt, src)) = socket_clone.recv_from(&mut buff) {
                 let mut actual_byte = &buff[..amt];
 
+                // Saving address if it's not matchmaker
                 {
                     if src
                         != "della-awakenings.tun.ply.gg:38576"
@@ -115,8 +102,18 @@ fn main() {
                         }
                     }
                 }
+                // ;
 
                 if let Ok(msg) = Chunk::deserialze(&mut actual_byte) {
+                    // Check for extra chunks if recieved even message is completed
+                    {
+                        let completed_msg = completed_msg_clone.lock().unwrap();
+                        if completed_msg.0.contains(&msg.id) {
+                            return;
+                        }
+                    }
+                    // ;
+
                     let crr_total_chunks: u16 = msg.total_chunks;
                     let curr_idx = msg.index as u16;
 
@@ -125,9 +122,8 @@ fn main() {
                         return;
                     }
 
-                    // ACKNOWLEDGMENT
+                    // Acknowledgment
                     if msg.msg_type != MsgType::Ack {
-                        println!("MsgType revieved: {:?}", msg.msg_type);
                         let msg_type = MsgType::Ack;
                         let ack_text = "Done";
                         let ack_text_byte = ack_text.as_bytes();
@@ -144,14 +140,7 @@ fn main() {
                     };
                     // ;
 
-                    {
-                        let completed_msg = completed_msg_clone.lock().unwrap();
-                        if completed_msg.0.contains(&msg.id) {
-                            return;
-                        }
-                    }
-
-                    // REPLY INSTANTLY IF IT'S RE OTHERWISE STORE VALUES
+                    // Deserializing Message based on it's Header Type
                     match msg.msg_type {
                         MsgType::Chat => {
                             let mut chunk_vec = chunk_vec_clone.lock().unwrap();
@@ -268,7 +257,6 @@ fn main() {
                             );
                         }
                         MsgType::Peers => {
-                            // SAVED PEER LIST TO FILE
                             let all_bytes = {
                                 let mut chunk_vec = chunk_vec_clone.lock().unwrap();
 
@@ -294,6 +282,7 @@ fn main() {
                                 }
                             };
 
+                            // Saving Peer-List to file
                             if let TypeBased::Peers((_, val)) = all_bytes {
                                 let all_peers: Vec<SocketAddr> =
                                     Vec::deserialze(&mut val.as_slice()).unwrap();
@@ -316,14 +305,16 @@ fn main() {
 
                                 mutable.extend(exiting_peers);
                             }
+                            // ;
                         }
                     }
                 }
             }
         }
     });
+    // ;
 
-    // --- MESSAGE SENDER ---
+    // -- SENDER --
     let stdin = std::io::stdin();
     let mut input = String::new();
     println!("Type text and press enter to send");
@@ -331,10 +322,6 @@ fn main() {
     loop {
         stdin.read_line(&mut input).unwrap();
         let text = input.trim().to_string();
-
-        // -- PASSING FILE --
-        // To pass file uncomment code and replace above 'text' variable name with 'path'
-        // let text = fs::read_to_string(path).expect("Faild to read file");
 
         if !text.is_empty() {
             let peers: Arc<Vec<SocketAddr>> = 'get_peers: {
@@ -348,6 +335,7 @@ fn main() {
                 let path = Path::new("./addr.peer.bin");
                 let mut fetched_peers: Vec<SocketAddr> = read_from_file(path).unwrap_or_default();
 
+                // Checking if file with Peer-List already exists if not then using matchmaker ip as peer
                 if fetched_peers.is_empty() {
                     if let Ok(mut resolved) = "della-awakenings.tun.ply.gg:38576".to_socket_addrs()
                     {
@@ -356,7 +344,9 @@ fn main() {
                         }
                     }
                 }
+                // ;
 
+                // Checking if Peer-List Exists else add List from File recieved from Matchmaker
                 let mut node = state.lock().unwrap();
                 if node.peer.is_empty() {
                     node.peer = Arc::new(fetched_peers);
@@ -364,6 +354,7 @@ fn main() {
                 } else {
                     node.peer.clone()
                 }
+                // ;
             };
 
             let send_to_peers = peers.clone();
@@ -378,12 +369,11 @@ fn main() {
                 .send_in_chunks(msg_type, msg_byte, None, None, &send_to_peers, &socket)
                 .expect("Failed to send");
 
-            println!("message: {:?}", cache.0);
-
             let mut node = state.lock().unwrap();
             node.msg_seen.insert(format!("{:?}", msg_id));
         }
 
         input.clear();
     }
+    // ;
 }

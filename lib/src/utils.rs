@@ -10,6 +10,7 @@ use std::{
     thread,
 };
 
+// Chunk Strcture
 pub struct Chunk<'a> {
     pub msg_type: MsgType,
     pub id: U256,
@@ -25,10 +26,11 @@ pub struct SendedData {
     pub total: u16,
 }
 
-// CHUNK TRACKER
+// Chunk Tracker (Cache)
 #[derive(Default, Debug)]
 pub struct ChunkSended(pub HashMap<U256, SendedData>);
 
+// Message Serializer
 impl<'a> Serializer for Chunk<'a> {
     fn serialize(&self, buffer: &mut Vec<u8>) {
         self.msg_type.serialize(buffer);
@@ -39,6 +41,7 @@ impl<'a> Serializer for Chunk<'a> {
     }
 }
 
+// Message Deserializer
 impl<'a> Deserializer<'a> for Chunk<'a> {
     fn deserialze(buffer: &mut &'a [u8]) -> std::prelude::v1::Result<Self, &'static str> {
         // Min header size: 32 (Hash) + 2 (index) + 2 (total_chunks) = 40 bytes
@@ -72,8 +75,8 @@ impl<'a> Deserializer<'a> for Chunk<'a> {
     }
 }
 
-// CREATE CHUNK AND THEN SEND TO ALL PEERS
 impl<'a> ChunkSended {
+    // CREATE CHUNK AND THEN SEND TO ALL PEERS
     pub fn send_in_chunks(
         &mut self,
         msg_type: MsgType,
@@ -114,8 +117,7 @@ impl<'a> ChunkSended {
 
                 // TODO: after converting to bytes encrypt it
 
-                // SAVING TO ChunkSended
-
+                // Saving Chunk to ChunkSended
                 if msg_type == MsgType::Chat || msg_type == MsgType::Peers {
                     self.0
                         .entry(msg_id)
@@ -138,6 +140,7 @@ impl<'a> ChunkSended {
                 batch.push(buffer);
             }
 
+            // Seding Message to 5 active peers only
             for peer_list in peers.chunks(5) {
                 let mut active_peers = peer_list.to_vec();
 
@@ -166,13 +169,14 @@ impl<'a> ChunkSended {
                     }
                 }
 
-                // SAVING PEERS TO ChunkSended
+                // Saving peers to ChunkSended
                 if msg_type == MsgType::Chat {
                     self.0.entry(msg_id).and_modify(|data| {
                         data.peers = active_peers; // Correct this as if there will be re-request for only one peer it'll remove other peers 
                     });
                 }
             }
+            // ;
         }
 
         if !rm_ip.is_empty() {

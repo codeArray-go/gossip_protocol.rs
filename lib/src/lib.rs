@@ -17,14 +17,6 @@ pub enum MsgType {
     Peers = b'P',
 }
 
-// #[derive(Debug, Clone)]
-// pub enum Message {
-//     Chat(String),
-//     Ack(U256),
-//     Re(U256),
-//     Peers(HashSet<SocketAddr>),
-// }
-
 #[derive(Clone)]
 pub enum Combined<'a> {
     Msg(&'a [u8]),
