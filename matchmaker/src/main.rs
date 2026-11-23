@@ -106,7 +106,7 @@ fn main() {
         }
     });
 
-    // SENDER
+    // -- SENDER --
     loop {
         let data = 'node_list: {
             let list = node_list.lock().unwrap();
@@ -115,7 +115,7 @@ fn main() {
                 break 'node_list None;
             }
 
-            if list.combined_list.is_empty() {
+            if list.combined_list.len() < 1 {
                 None
             } else {
                 let send_to_peers = list.tracker.clone();

@@ -97,7 +97,6 @@ impl<'a> ChunkSended {
         let mut rm_ip: Vec<SocketAddr> = Vec::new();
 
         for chunk_batch in all_packet.chunks(25) {
-            println!("Total Chunks in a batch: {:?}", chunk_batch.len());
             let mut batch = Vec::with_capacity(chunk_batch.len());
 
             for (idx, chunk_slice) in chunk_batch {

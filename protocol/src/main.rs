@@ -371,6 +371,14 @@ fn main() {
 
             let mut node = state.lock().unwrap();
             node.msg_seen.insert(format!("{:?}", msg_id));
+
+            Arc::make_mut(&mut node.peer).retain(|add| {
+                *add != "della-awakenings.tun.ply.gg:38576"
+                    .to_socket_addrs()
+                    .unwrap()
+                    .next()
+                    .unwrap()
+            });
         }
 
         input.clear();
