@@ -14,7 +14,7 @@ pub enum MsgType {
     Chat = b'C',
     Ack = b'A',
     Re = b'R',
-    Peers = b'P',
+    Peers = b'L',
 }
 
 #[derive(Clone)]

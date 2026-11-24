@@ -1,3 +1,5 @@
+use dashmap::DashMap;
+
 use crate::{
     Combined, MsgType, U256,
     byte_converter::{Deserializer, Serializer},
@@ -142,6 +144,7 @@ impl<'a> ChunkSended {
             // Seding Message to 5 active peers only
             for peer_list in peers.chunks(5) {
                 let mut active_peers = peer_list.to_vec();
+                println!("Message sended to: {:?}", peer_list);
 
                 for packet in &batch {
                     active_peers.retain(|peer| match socket.send_to(packet, peer) {

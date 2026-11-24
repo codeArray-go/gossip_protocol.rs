@@ -8,3 +8,4 @@ sha256 = "1.6.0"
 uint = "0.10.1"
 ecdsa = { version = "0.17.0", features = ["algorithm", "serde"] }
 hex = "0.4.3"
+dashmap = "6.2.1"
