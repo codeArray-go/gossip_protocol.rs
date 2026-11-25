@@ -1,4 +1,5 @@
 use crate::utils::{read_from_file, save_to_file};
+use dashmap::DashMap;
 use net2::UdpSocketExt;
 use p2p_lib::{
     MsgType, U256,
@@ -71,8 +72,8 @@ fn main() {
 
     let state_clone = Arc::clone(&state);
 
-    let sended_data = Arc::new(Mutex::new(ChunkSended(HashMap::new())));
-    let sended_data_clone = Arc::clone(&sended_data);
+    let mut sended_data = Arc::new(ChunkSended(DashMap::new()));
+    let mut sended_data_clone = Arc::clone(&sended_data);
 
     let completed_msg = Arc::new(Mutex::new(CompletelyReceivedMsg(VecDeque::new())));
     let completed_msg_clone = Arc::clone(&completed_msg);
@@ -219,9 +220,8 @@ fn main() {
                             } = chunk
                             {
                                 if ack.len() == (msg.total_chunks - *removed_acks) as usize {
-                                    let sended = sended_data_clone.lock().unwrap();
                                     let target_peer_len =
-                                        sended.0.get(&msg.id).unwrap().peers.len();
+                                        sended_data_clone.0.get(&msg.id).unwrap().peers.len();
 
                                     ack.retain(|_key, val| {
                                         if val.len() == target_peer_len {
@@ -237,8 +237,7 @@ fn main() {
                             }
                         }
                         MsgType::Re => {
-                            let mut sended_data = sended_data_clone.lock().unwrap();
-                            let chunk = sended_data
+                            let chunk = sended_data_clone
                                 .0
                                 .get(&msg.id)
                                 .unwrap()
@@ -247,14 +246,16 @@ fn main() {
                                 .unwrap()
                                 .clone();
 
-                            let _id = sended_data.send_in_chunks(
-                                MsgType::Chat,
-                                &chunk,
-                                Some(msg.id),
-                                Some(msg.index),
-                                &[src],
-                                &socket_clone,
-                            );
+                            let _id = Arc::get_mut(&mut sended_data_clone)
+                                .unwrap()
+                                .send_in_chunks(
+                                    MsgType::Chat,
+                                    &chunk,
+                                    Some(msg.id),
+                                    Some(msg.index),
+                                    &[src],
+                                    &socket_clone,
+                                );
                         }
                         MsgType::Peers => {
                             let all_bytes = {
@@ -362,9 +363,8 @@ fn main() {
             let msg_byte = text.as_bytes();
             let msg_type = p2p_lib::MsgType::Chat;
 
-            let mut cache = sended_data.lock().unwrap();
-
             // TODO:- Handle error correctly as with error there will be ip of those whome failed to send chunks
+            let cache = Arc::get_mut(&mut sended_data).unwrap();
             let msg_id = cache
                 .send_in_chunks(msg_type, msg_byte, None, None, &send_to_peers, &socket)
                 .expect("Failed to send");

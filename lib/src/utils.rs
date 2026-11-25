@@ -30,7 +30,7 @@ pub struct SendedData {
 
 // Chunk Tracker (Cache)
 #[derive(Default, Debug)]
-pub struct ChunkSended(pub HashMap<U256, SendedData>);
+pub struct ChunkSended(pub DashMap<U256, SendedData>);
 
 // Message Serializer
 impl<'a> Serializer for Chunk<'a> {

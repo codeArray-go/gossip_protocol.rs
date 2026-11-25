@@ -38,7 +38,7 @@ fn main() {
 
     let list_clone = Arc::clone(&node_list);
 
-    let sender_cache = Arc::new(Mutex::new(ChunkSended::default()));
+    let mut sender_cache = Arc::new(ChunkSended::default());
     let sended_data_clone = Arc::clone(&sender_cache);
 
     let ack_data_clone = Arc::clone(&Arc::new(AckData(DashMap::new())));
@@ -73,12 +73,10 @@ fn main() {
                             });
 
                         if chunk.ack.len() == (msg.total_chunks - chunk.removed_ack) as usize {
-                            let mut sended = sended_data_clone.lock().unwrap();
-
                             let target_peer_len: usize = if chunk.ack.len() == 0 {
-                                sended.0.remove(&msg.id).unwrap().peers.len()
+                                sended_data_clone.0.remove(&msg.id).unwrap().1.peers.len()
                             } else {
-                                sended.0.get(&msg.id).unwrap().peers.len()
+                                sended_data_clone.0.get(&msg.id).unwrap().peers.len()
                             };
 
                             let DataType { ack, removed_ack } = &mut *chunk;
@@ -138,7 +136,7 @@ fn main() {
         new_list.serialize(&mut buffer);
 
         println!("List sended to:- {:?}", send_to_peers);
-        let mut cache = sender_cache.lock().unwrap();
+        let cache = Arc::get_mut(&mut sender_cache).unwrap();
 
         match cache.send_in_chunks(MsgType::Peers, &buffer, None, None, &send_to_peers, &socket) {
             Ok(_msg_id) => {
