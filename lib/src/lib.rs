@@ -11,6 +11,8 @@ construct_uint!(
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
 #[repr(u8)]
 pub enum MsgType {
+    Ping = b'P',
+    Pong = b'O',
     Chat = b'C',
     Ack = b'A',
     Re = b'R',

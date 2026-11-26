@@ -143,6 +143,8 @@ fn main() {
 
                     // Deserializing Message based on it's Header Type
                     match msg.msg_type {
+                        MsgType::Ping => {}
+                        MsgType::Pong => {}
                         MsgType::Chat => {
                             let mut chunk_vec = chunk_vec_clone.lock().unwrap();
                             let chunks = chunk_vec
